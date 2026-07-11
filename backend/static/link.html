@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Budgerr — Link Bank Account</title>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 60px auto; padding: 0 20px; }
+    button { font-size: 16px; padding: 10px 20px; cursor: pointer; }
+    button:disabled { cursor: default; opacity: 0.5; }
+    pre { background: #f4f4f4; padding: 12px; border-radius: 6px; white-space: pre-wrap; word-break: break-all; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>Link a Bank Account</h1>
+  <p>This calls your local Budgerr backend to create a Plaid Link session, then hands off to Plaid's own secure login UI — your bank credentials go straight to Plaid, never to this page or the Budgerr backend.</p>
+  <button id="link-button">Connect a bank account</button>
+  <pre id="result"></pre>
+
+  <script>
+    const resultEl = document.getElementById('result');
+    const button = document.getElementById('link-button');
+
+    async function startLink() {
+      button.disabled = true;
+      resultEl.textContent = 'Requesting link token...';
+
+      let linkToken;
+      try {
+        const res = await fetch('/plaid/link-token', { method: 'POST' });
+        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+        linkToken = (await res.json()).link_token;
+      } catch (err) {
+        resultEl.textContent = 'Failed to get link token: ' + err.message;
+        resultEl.className = 'error';
+        button.disabled = false;
+        return;
+      }
+
+      const handler = Plaid.create({
+        token: linkToken,
+        onSuccess: async (public_token, metadata) => {
+          resultEl.textContent = 'Exchanging public token...';
+          try {
+            const res = await fetch('/plaid/exchange-public-token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ public_token }),
+            });
+            if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+            const data = await res.json();
+            resultEl.className = '';
+            resultEl.textContent =
+              'Linked! item_id: ' + data.item_id +
+              '\naccounts_created: ' + data.accounts_created +
+              '\n\nInstitution: ' + (metadata.institution ? metadata.institution.name : 'unknown');
+          } catch (err) {
+            resultEl.className = 'error';
+            resultEl.textContent = 'Exchange failed: ' + err.message;
+          }
+          button.disabled = false;
+        },
+        onExit: (err) => {
+          button.disabled = false;
+          if (err) {
+            resultEl.className = 'error';
+            resultEl.textContent = 'Link exited with error: ' + JSON.stringify(err);
+          }
+        },
+      });
+
+      handler.open();
+    }
+
+    button.addEventListener('click', startLink);
+  </script>
+</body>
+</html>
