@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "budgerr-app",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/aayushpokhrel/Documents/BudgerrApp && npx expo start --web"],
+      "port": 8081
+    }
+  ]
+}

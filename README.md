@@ -2,7 +2,7 @@
 
 ## 1. Goal
 
-A personal-use app (web + your existing React Native shell) that:
+A personal-use app (React Native mobile + a Next.js web mirror) that:
 - Connects your real bank accounts and categorizes spending automatically
 - Tracks your bets/parlays across sportsbooks as a first-class budget category, not an afterthought
 - Shows you a monthly betting allowance, net win/loss, and trend — alongside rent, groceries, etc.
@@ -170,8 +170,22 @@ your real transaction data to check against.
 
 ## 9. Frontend
 
-- Your existing React Native Android app is the natural home — add a Budget tab alongside the stats tab
-- A second, lighter web view (Streamlit or a small Next.js page) is useful for anything you'd rather check on a laptop, e.g. logging a bet or reviewing budget trend
+Two separate clients, both talking to the same FastAPI backend — no shared frontend code, each repo owns its own UI.
+
+### 9.1 Mobile — React Native (Expo)
+
+- Separate repo: [`budgerr-app`](https://github.com/aayushpokhrel1/budgerr-app) — Expo + TypeScript, Expo Router for navigation, React Query for data fetching
+- A Budget tab (betting allowance, other category tiles, recent bets + quick-entry log, best-card tip, net profit vs. bank cash flow) — the primary day-to-day surface, especially for logging a bet in the moment
+- Future: a Stats tab once the basketball analytics dashboard project is far enough along to merge in (see Section 6)
+- Side-loaded APK for personal use, per Section 11 — no Play Store listing needed
+
+### 9.2 Web — Next.js
+
+- A full mirror of the mobile app's functionality (budget, bets, rewards, trend), not just a read-only viewer — same FastAPI backend, same data, browser-based access from a laptop
+- Own repo, built after the mobile app is solid
+- Useful for anything more comfortable on a bigger screen: reviewing longer bet history, adjusting reward card rates, deeper trend views
+
+Both clients require the backend's CORS origins (`CORS_ORIGINS` in `backend/.env`) to include wherever they're served from during development.
 
 ---
 
@@ -206,9 +220,10 @@ Two realistic options:
 4. Categorization rules (betting merchant detection, net win/loss calc)
 5. Budgeting engine (categories, limits, alerts)
 6. Credit card rewards tracker (schema + proactive/retrospective lookup)
-7. Frontend tab in the RN app
-8. Deploy to VPS or home server
-9. (Optional) Wire in the basketball dashboard's tonight's-slate view
+7. Budget tab in the RN app (`budgerr-app` repo)
+8. Web mirror in Next.js (separate repo, built after the mobile app)
+9. Deploy to VPS or home server
+10. (Optional) Wire in the basketball dashboard's tonight's-slate view
 
 ---
 
