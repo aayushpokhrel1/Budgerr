@@ -8,7 +8,7 @@ A personal-use app (web + your existing React Native shell) that:
 - Shows you a monthly betting allowance, net win/loss, and trend — alongside rent, groceries, etc.
 - Ties into the basketball analytics dashboard so "tonight's slate + your remaining betting budget" is one glance, not three apps
 
-Scope for now: **you, personally.** Section 12 covers what changes if this ever goes beyond that.
+Scope for now: **you, personally.** Section 13 covers what changes if this ever goes beyond that.
 
 ---
 
@@ -17,10 +17,9 @@ Scope for now: **you, personally.** Section 12 covers what changes if this ever 
 ```
 Plaid (bank accounts) ──────┐
                              ├──> Backend (FastAPI) ──> PostgreSQL ──> Budgeting Engine ──> Dashboard (RN app / web)
-Sportsbook CSV exports ──────┘         ▲
-      (dropped in watch folder)        │
-                                  Watcher/Parser
-                                  (automated)
+Manual quick-entry ──────────┘
+   (bet placed → logged in-app,
+    settled → won/lost/push toggle)
 ```
 
 ---
@@ -33,12 +32,34 @@ Sportsbook CSV exports ──────┘         ▲
 - Build against **Sandbox** (fake data) first, confirm the pipeline works end to end, then switch to real accounts
 - Plaid's Transactions API + webhook keeps new transactions flowing in without polling
 
-### 3.2 Betting data — CSV export + watch folder
-- No live API for personal-scale bet syncing (SharpSports/BetSync exists but is $500/mo, business-tier)
-- You manually export your bet/transaction history from each sportsbook (DraftKings: Account Center → Financial Center → Transaction History; FanDuel: History tab → Download as CSV) — a 15-second task, not worth automating around login credentials
-- A watcher script monitors a local folder (or a simple upload endpoint) for new export files
-- On file detection: identify the source sportsbook by column signature → normalize into your schema → load into Postgres
-- Optional: an iOS/Android Shortcut that jumps straight to each sportsbook's export page, so the manual step is one tap
+### 3.2 Betting data — manual quick-entry
+
+No major sportsbook (DraftKings, FanDuel, bet365, and others show the same
+pattern) provides a reliable native export for itemized bet/parlay-leg history —
+what exists is a viewable transaction or P/L statement page, not a structured
+export with legs, lines, and odds. This holds across books, so rather than
+building and maintaining a separate scraper or importer per sportsbook, a single
+manual quick-entry flow covers all of them consistently.
+
+**Approach: quick-entry at time of bet**
+
+- One entry screen in the app, used regardless of which sportsbook the bet was
+  placed on
+- Fields: sportsbook, bet type (`single` | `parlay`), stake, potential payout,
+  and per-leg detail (player, stat type, line, side, odds)
+- Target: under 15 seconds per bet. Pre-fill where possible — pull tonight's slate
+  from the basketball model so you're selecting from a list of tonight's players/props
+  rather than typing names and lines by hand
+- **Settlement**: start with a manual won/lost/push toggle once a bet settles;
+  automate later by cross-referencing final box scores (already in your
+  `player_game_stats` table from API-Basketball) against open `bet_legs`
+
+**What stays automated**
+
+- Net betting cash flow (deposits/withdrawals) still comes from the bank side via
+  Plaid, regardless of which sportsbook it's tied to
+- This only changes *how* `bets` / `bet_legs` get populated — the schema from
+  Section 3.3 is unchanged
 
 ### 3.3 Schema sketch (PostgreSQL)
 
@@ -89,20 +110,72 @@ These can stay two backends sharing one Postgres instance and one frontend, or m
 
 ---
 
-## 7. Backend / API
+## 7. Credit Card Rewards Tracker
 
-- Python, FastAPI
-- Scheduled jobs (cron or a simple task queue): Plaid transaction sync, CSV watcher, alert threshold checks
-- One internal API serving both the budgeting data and (optionally) the basketball model outputs to a shared frontend
+No card issuer publishes reward category rates as a structured API — this is
+inherently a manually-maintained dataset, but that's fine given it's just your
+own handful of cards, updated a few times a year when rotating categories change.
 
-## 8. Frontend
+### 7.1 Schema
 
-- Your existing React Native Android app is the natural home — add a Budget tab alongside the stats tab
-- A second, lighter web view (Streamlit or a small Next.js page) is useful for anything you'd rather check on a laptop, e.g. reviewing a CSV import
+```sql
+credit_cards(card_id, name, issuer, nickname)
+
+card_reward_rates(
+  rate_id, card_id, category_id, multiplier,
+  cap_amount, cap_period,        -- 'quarterly' | 'annual' | null (uncapped)
+  effective_start, effective_end -- handles rotating categories (e.g. Chase Freedom, Discover it)
+)
+
+card_reward_progress(
+  card_id, category_id, period_start, period_end, amount_spent_at_bonus_rate
+)
+```
+
+`category_id` reuses the categories table from Section 5 — no separate
+categorization system needed.
+
+### 7.2 Two modes
+
+**Proactive — "which card right now"**
+Pick a category → return the card with the best *currently active* multiplier
+for it, checking `card_reward_progress` against `cap_amount` first. If a card's
+bonus category is already capped out for the period, it drops out of
+consideration and the next-best card surfaces instead — otherwise you'd keep
+getting recommended a card that's earning 1% instead of 5% because the cap was
+already hit.
+
+**Retrospective — "rewards left on the table"**
+Since every transaction is already flowing in and categorized via Plaid
+(Section 3.1 / Section 4), this is close to free: for each past transaction,
+compare the card actually used against what the optimal card would have earned,
+and surface the gap. Rolls up into a monthly/quarterly trend — a genuinely
+useful view most consumer reward apps don't give you, since they don't have
+your real transaction data to check against.
+
+### 7.3 Maintenance
+
+- Rotating-category cards (5% quarterly categories) need a quick manual update
+  each quarter when the new categories are announced — a reminder/notification
+  tied to `effective_end` dates is enough to keep this from going stale
+- `card_reward_progress` resets automatically at each `cap_period` boundary
 
 ---
 
-## 9. Security & Non-Negotiables (personal use, still matters)
+## 8. Backend / API
+
+- Python, FastAPI
+- Scheduled jobs (cron or a simple task queue): Plaid transaction sync, alert threshold checks, box-score cross-reference for auto-settlement
+- One internal API serving both the budgeting data and (optionally) the basketball model outputs to a shared frontend
+
+## 9. Frontend
+
+- Your existing React Native Android app is the natural home — add a Budget tab alongside the stats tab
+- A second, lighter web view (Streamlit or a small Next.js page) is useful for anything you'd rather check on a laptop, e.g. logging a bet or reviewing budget trend
+
+---
+
+## 10. Security & Non-Negotiables (personal use, still matters)
 
 - HTTPS everywhere — no exceptions, even for a single-user app
 - Plaid keys and DB credentials in environment variables/secrets, never committed to the repo
@@ -112,7 +185,7 @@ These can stay two backends sharing one Postgres instance and one frontend, or m
 
 ---
 
-## 10. Deployment (Personal Use)
+## 11. Deployment (Personal Use)
 
 Two realistic options:
 
@@ -125,20 +198,21 @@ Two realistic options:
 
 ---
 
-## 11. Build Order
+## 12. Build Order
 
 1. Postgres schema (bank + betting + budgeting tables)
 2. Plaid Sandbox integration → confirm pipeline → switch to real accounts
-3. CSV watcher/parser for your sportsbooks (start with whichever you use most)
+3. Manual quick-entry screen for bets/parlays (single form covering all sportsbooks)
 4. Categorization rules (betting merchant detection, net win/loss calc)
 5. Budgeting engine (categories, limits, alerts)
-6. Frontend tab in the RN app
-7. Deploy to VPS or home server
-8. (Optional) Wire in the basketball dashboard's tonight's-slate view
+6. Credit card rewards tracker (schema + proactive/retrospective lookup)
+7. Frontend tab in the RN app
+8. Deploy to VPS or home server
+9. (Optional) Wire in the basketball dashboard's tonight's-slate view
 
 ---
 
-## 12. Future Plans — Beyond Personal Use
+## 13. Future Plans — Beyond Personal Use
 
 Not part of the current build, but worth having on paper if it ever comes up:
 

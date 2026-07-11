@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: budgerr
+      POSTGRES_PASSWORD: budgerr
+      POSTGRES_DB: budgerr
+    ports:
+      - "5433:5432"
+    volumes:
+      - budgerr_pgdata:/var/lib/postgresql/data
+
+volumes:
+  budgerr_pgdata:
