@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .env
 *.egg-info/
+backend/backend.log
+backend/backend.error.log
