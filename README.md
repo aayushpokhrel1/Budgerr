@@ -181,8 +181,8 @@ Two separate clients, both talking to the same FastAPI backend — no shared fro
 
 ### 9.2 Web — Next.js
 
-- A full mirror of the mobile app's functionality (budget, bets, rewards, trend), not just a read-only viewer — same FastAPI backend, same data, browser-based access from a laptop
-- Own repo, built after the mobile app is solid
+- Separate repo: [`budgerr-web`](https://github.com/aayushpokhrel1/budgerr-web) — Next.js App Router, TypeScript, Tailwind CSS, React Query for data fetching
+- A full mirror of the mobile app's functionality, not just a read-only viewer: dashboard, bets (log/settle), rewards (cards/rates/best-card lookup/left-on-table), categories, and the Plaid Link flow — same FastAPI backend, same data
 - Useful for anything more comfortable on a bigger screen: reviewing longer bet history, adjusting reward card rates, deeper trend views
 
 Both clients require the backend's CORS origins (`CORS_ORIGINS` in `backend/.env`) to include wherever they're served from during development.
@@ -221,7 +221,7 @@ Two realistic options:
 5. Budgeting engine (categories, limits, alerts)
 6. Credit card rewards tracker (schema + proactive/retrospective lookup)
 7. Budget tab in the RN app (`budgerr-app` repo)
-8. Web mirror in Next.js (separate repo, built after the mobile app)
+8. Web mirror in Next.js (`budgerr-web` repo)
 9. Deploy to VPS or home server
 10. (Optional) Wire in the basketball dashboard's tonight's-slate view
 

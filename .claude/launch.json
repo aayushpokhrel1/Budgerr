@@ -6,6 +6,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "cd /Users/aayushpokhrel/Documents/BudgerrApp && npx expo start --web"],
       "port": 8081
+    },
+    {
+      "name": "budgerr-web",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/aayushpokhrel/Documents/budgerr-web && npm run dev"],
+      "port": 3000
     }
   ]
 }
