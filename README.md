@@ -174,6 +174,21 @@ your real transaction data to check against.
   tied to `effective_end` dates is enough to keep this from going stale
 - `card_reward_progress` resets automatically at each `cap_period` boundary
 
+### 7.4 Automated rate lookup — built, not yet enabled
+
+Since no issuer exposes reward rates as a structured API, `POST
+/rewards/cards/{card_id}/fetch-rates` has Claude (Anthropic API, with web
+search) research a named card's current reward categories and propose
+structured rates — nothing is saved at this step. `POST
+/rewards/cards/{card_id}/reward-rates/confirm` then saves a reviewed/edited
+version of that proposal (auto-creating any category that doesn't already
+exist). Code is in `app/rewards_lookup.py` and `app/routers/rewards.py`.
+
+**Not turned on yet** — `ANTHROPIC_API_KEY` is intentionally left unset in
+`backend/.env` (see `.env.example`) since each lookup costs money. Add a key
+from console.anthropic.com when ready to actually use this; until then
+`fetch-rates` returns a 501.
+
 ---
 
 ## 8. Backend / API
@@ -269,7 +284,7 @@ The Section 12 build order is done; this is the next layer, roughly in value-per
 
 1. **Schedule the built-but-unscheduled jobs** — `POST /bets/auto-settle`, Plaid transaction sync, and alert threshold checks all exist but nothing triggers them (Section 8). Highest value, lowest effort: a few cron entries / launchd jobs (auto-settle daily after playstat's 8am box-score backfill).
 2. **Multi-sport stat types from playstat** — playstat now ingests MLB (2026 season backfilled; NFL later, see playstat README §13). Auto-settlement currently only resolves `points|rebounds|assists`; playstat's `/box-scores` now returns a generic per-player `stats` map (e.g. `{"hits": 2, "total_bases": 5, ...}`) plus a `sport` field alongside the legacy NBA fields, so the settlement code can switch to reading `stats[leg.stat_type]` and support MLB legs directly. MLB stat types playstat tracks: `hits`, `total_bases`, `home_runs`, `rbis`, `runs`, `stolen_bases`, `batter_strikeouts`, `walks` (batters); `pitcher_strikeouts`, `earned_runs`, `hits_allowed`, `walks_allowed`, `outs_recorded` (pitchers). Until this is done, MLB legs just stay pending for manual settlement — degraded, not broken.
-3. **The original "one glance" view** — tonight's slate + remaining betting budget together (Section 6 flags this as not built; only the pre-fill tie-in exists). With MLB edges flowing from playstat in July, this view would finally have live content year-round rather than only during the NBA season.
+3. ~~The original "one glance" view~~ — **done** (Section 6): the Tonight screen combines remaining betting budget, the full slate via playstat's `/games`, and per-game edges. With MLB now ingested in playstat, it has live content in July rather than only during the NBA season.
 4. **Bet performance analytics** — once settled bets accumulate: ROI by sportsbook / bet type / stat type, and crucially *actual hit rate vs. the model's predicted probability* on bets actually placed. That's a real-money calibration check that playstat's backtester can't do on its own, and it closes the loop between the two projects.
 5. **Recurring-charge detection** — flag transactions that repeat monthly at the same merchant/amount (subscription creep). All the data is already flowing via Plaid; this is pure analysis on `transactions`.
 6. **Rotating-category reminder** — Section 7.3 describes a reminder tied to `card_reward_rates.effective_end`; confirm it's actually wired to a notification and build it if not (natural to bundle with item 1's scheduler work).

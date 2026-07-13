@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.4",
     "plaid-python>=29.0.0",
     "httpx>=0.27",
+    "anthropic>=0.69",
 ]
 
 [project.optional-dependencies]

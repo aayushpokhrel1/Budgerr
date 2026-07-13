@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     playstat_base_url: str = "http://localhost:8000"
 
+    anthropic_api_key: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

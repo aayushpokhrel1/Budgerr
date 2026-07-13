@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date
 
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func
@@ -16,6 +17,7 @@ from app.models import (
     CreditCard,
     Transaction,
 )
+from app.rewards_lookup import fetch_card_reward_rates
 
 router = APIRouter(prefix="/rewards", tags=["rewards"])
 
@@ -104,6 +106,64 @@ def update_credit_card(
     return card
 
 
+# ---- Reward rate lookup (web search via Claude) ----
+
+
+def _parse_cap_period(value: str | None) -> CapPeriod | None:
+    if value in (CapPeriod.quarterly.value, CapPeriod.annual.value):
+        return CapPeriod(value)
+    return None
+
+
+class ProposedRateOut(BaseModel):
+    category_name: str
+    matched_category_id: int | None
+    multiplier: float
+    cap_amount: float | None
+    cap_period: CapPeriod | None
+    effective_end: date | None
+    notes: str
+
+
+class FetchRatesResponse(BaseModel):
+    source_summary: str
+    proposed_rates: list[ProposedRateOut]
+
+
+@router.post("/cards/{card_id}/fetch-rates", response_model=FetchRatesResponse)
+def fetch_rates(card_id: int, db: Session = Depends(get_db)) -> FetchRatesResponse:
+    """Looks up the card's current reward categories via web search, without
+    saving anything — pair with POST /cards/{card_id}/reward-rates/confirm
+    once you've reviewed the results.
+    """
+    card = db.get(CreditCard, card_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail=f"No credit card with id {card_id}")
+
+    try:
+        result = fetch_card_reward_rates(card.name, card.issuer)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except anthropic.APIError as exc:
+        raise HTTPException(status_code=502, detail=f"Reward lookup failed: {exc}") from exc
+
+    existing_by_name = {c.name.strip().lower(): c.category_id for c in db.query(Category).all()}
+
+    proposed_rates = [
+        ProposedRateOut(
+            category_name=r.category_name,
+            matched_category_id=existing_by_name.get(r.category_name.strip().lower()),
+            multiplier=r.multiplier,
+            cap_amount=r.cap_amount,
+            cap_period=_parse_cap_period(r.cap_period),
+            effective_end=date.fromisoformat(r.effective_end) if r.effective_end else None,
+            notes=r.notes,
+        )
+        for r in result.rates
+    ]
+    return FetchRatesResponse(source_summary=result.source_summary, proposed_rates=proposed_rates)
+
+
 # ---- Reward rates ----
 
 
@@ -155,6 +215,61 @@ def create_reward_rate(
 @router.get("/cards/{card_id}/reward-rates", response_model=list[RewardRateRead])
 def list_reward_rates(card_id: int, db: Session = Depends(get_db)) -> list[CardRewardRate]:
     return db.query(CardRewardRate).filter(CardRewardRate.card_id == card_id).all()
+
+
+class ConfirmedRateInput(BaseModel):
+    category_name: str
+    multiplier: float
+    cap_amount: float | None = None
+    cap_period: CapPeriod | None = None
+    effective_start: date | None = None
+    effective_end: date | None = None
+
+
+class ConfirmRatesRequest(BaseModel):
+    rates: list[ConfirmedRateInput]
+
+
+@router.post("/cards/{card_id}/reward-rates/confirm", response_model=list[RewardRateRead])
+def confirm_rates(
+    card_id: int, body: ConfirmRatesRequest, db: Session = Depends(get_db)
+) -> list[CardRewardRate]:
+    """Saves a reviewed/edited set of proposed rates from fetch-rates. Any
+    category name that doesn't already exist is created automatically, with
+    no monthly limit set — edit that afterward via /categories.
+    """
+    card = db.get(CreditCard, card_id)
+    if card is None:
+        raise HTTPException(status_code=404, detail=f"No credit card with id {card_id}")
+
+    existing_by_name = {c.name.strip().lower(): c for c in db.query(Category).all()}
+    created_rates: list[CardRewardRate] = []
+
+    for item in body.rates:
+        key = item.category_name.strip().lower()
+        category = existing_by_name.get(key)
+        if category is None:
+            category = Category(name=item.category_name, monthly_limit=0, is_betting_category=False)
+            db.add(category)
+            db.flush()
+            existing_by_name[key] = category
+
+        rate = CardRewardRate(
+            card_id=card_id,
+            category_id=category.category_id,
+            multiplier=item.multiplier,
+            cap_amount=item.cap_amount,
+            cap_period=item.cap_period,
+            effective_start=item.effective_start or date.today(),
+            effective_end=item.effective_end,
+        )
+        db.add(rate)
+        created_rates.append(rate)
+
+    db.commit()
+    for rate in created_rates:
+        db.refresh(rate)
+    return created_rates
 
 
 @router.patch("/reward-rates/{rate_id}", response_model=RewardRateRead)
