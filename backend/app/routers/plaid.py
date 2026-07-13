@@ -1,19 +1,23 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.country_code import CountryCode
+from plaid.model.institutions_get_by_id_request import InstitutionsGetByIdRequest
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
 from plaid.model.link_token_create_request_user import LinkTokenCreateRequestUser
 from plaid.model.products import Products
 from plaid.model.transactions_sync_request import TransactionsSyncRequest
 from plaid.exceptions import ApiException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.betting_detection import is_betting_merchant
 from app.deps import get_db
-from app.models import Account, PlaidItem, Transaction
+from app.models import Account, Category, PlaidItem, Transaction
 from app.plaid_client import PlaidNotConfiguredError, get_plaid_client
+from app.routers.budgeting import recompute_budget_periods_for_month
 
 router = APIRouter(prefix="/plaid", tags=["plaid"])
 
@@ -80,7 +84,18 @@ def exchange_public_token(
     except ApiException as exc:
         raise HTTPException(status_code=502, detail=f"Plaid error: {exc.body}") from exc
 
-    institution_name = accounts_response.item.institution_id or "Unknown institution"
+    institution_id = accounts_response.item.institution_id
+    institution_name = institution_id or "Unknown institution"
+    if institution_id:
+        try:
+            institution_response = client.institutions_get_by_id(
+                InstitutionsGetByIdRequest(
+                    institution_id=institution_id, country_codes=[CountryCode("US")]
+                )
+            )
+            institution_name = institution_response.institution.name
+        except ApiException:
+            pass  # fall back to the raw institution_id rather than failing the link
 
     plaid_item = db.get(PlaidItem, item_id)
     if plaid_item is None:
@@ -119,6 +134,22 @@ def exchange_public_token(
     return ExchangePublicTokenResponse(item_id=item_id, accounts_created=accounts_created)
 
 
+class AccountRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    account_id: int
+    plaid_item_id: str
+    institution_name: str
+    account_type: str
+    mask: str
+    current_balance: float
+
+
+@router.get("/accounts", response_model=list[AccountRead])
+def list_accounts(db: Session = Depends(get_db)) -> list[Account]:
+    return db.query(Account).order_by(Account.institution_name, Account.mask).all()
+
+
 class SyncTransactionsResponse(BaseModel):
     added: int
     modified: int
@@ -147,10 +178,16 @@ def sync_transactions(item_id: str, db: Session = Depends(get_db)) -> SyncTransa
     accounts_by_plaid_id = {
         a.plaid_account_id: a for a in db.query(Account).filter(Account.plaid_item_id == item_id)
     }
+    # Best-effort auto-categorization: if Plaid's own category string happens
+    # to match one of your budget categories by name, use it. Anything that
+    # doesn't match stays uncategorized until set manually via PATCH
+    # /transactions/{txn_id} — this never overrides a category you already set.
+    categories_by_name = {c.name.strip().lower(): c.name for c in db.query(Category).all()}
 
     added_count = 0
     modified_count = 0
     removed_count = 0
+    touched_months: set[date] = set()
     cursor = plaid_item.cursor
     has_more = True
 
@@ -174,20 +211,32 @@ def sync_transactions(item_id: str, db: Session = Depends(get_db)) -> SyncTransa
                 .filter(Transaction.plaid_transaction_id == plaid_txn.transaction_id)
                 .one_or_none()
             )
+            is_betting = is_betting_merchant(plaid_txn.merchant_name or plaid_txn.name)
+            plaid_category = _plaid_category(plaid_txn)
+            auto_category = (
+                categories_by_name.get(plaid_category.strip().lower())
+                if plaid_category and not is_betting
+                else None
+            )
+
             values = dict(
                 account_id=account.account_id,
                 plaid_transaction_id=plaid_txn.transaction_id,
                 date=plaid_txn.date,
                 amount=plaid_txn.amount,
                 merchant_name=plaid_txn.merchant_name or plaid_txn.name,
-                plaid_category=_plaid_category(plaid_txn),
-                is_betting=is_betting_merchant(plaid_txn.merchant_name or plaid_txn.name),
+                plaid_category=plaid_category,
+                is_betting=is_betting,
             )
+            touched_months.add(plaid_txn.date.replace(day=1))
+
             if existing is not None:
                 for key, value in values.items():
                     setattr(existing, key, value)
+                if existing.custom_category is None and auto_category:
+                    existing.custom_category = auto_category
             else:
-                db.add(Transaction(**values))
+                db.add(Transaction(**values, custom_category=auto_category))
 
         for removed_txn in response.removed:
             db.query(Transaction).filter(
@@ -203,6 +252,64 @@ def sync_transactions(item_id: str, db: Session = Depends(get_db)) -> SyncTransa
     plaid_item.cursor = cursor
     db.commit()
 
+    for month in touched_months:
+        recompute_budget_periods_for_month(db, month)
+
     return SyncTransactionsResponse(
         added=added_count, modified=modified_count, removed=removed_count
     )
+
+
+class TransactionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    txn_id: int
+    account_id: int
+    date: date
+    amount: float
+    merchant_name: str | None
+    plaid_category: str | None
+    custom_category: str | None
+    is_betting: bool
+
+
+@router.get("/transactions", response_model=list[TransactionRead])
+def list_transactions(
+    start: date | None = None,
+    end: date | None = None,
+    account_id: int | None = None,
+    uncategorized_only: bool = False,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+) -> list[Transaction]:
+    query = db.query(Transaction)
+    if start is not None:
+        query = query.filter(Transaction.date >= start)
+    if end is not None:
+        query = query.filter(Transaction.date < end)
+    if account_id is not None:
+        query = query.filter(Transaction.account_id == account_id)
+    if uncategorized_only:
+        query = query.filter(Transaction.custom_category.is_(None), Transaction.is_betting.is_(False))
+    return query.order_by(Transaction.date.desc(), Transaction.txn_id.desc()).limit(limit).all()
+
+
+class TransactionCategorize(BaseModel):
+    custom_category: str | None
+
+
+@router.patch("/transactions/{txn_id}", response_model=TransactionRead)
+def categorize_transaction(
+    txn_id: int, body: TransactionCategorize, db: Session = Depends(get_db)
+) -> Transaction:
+    txn = db.get(Transaction, txn_id)
+    if txn is None:
+        raise HTTPException(status_code=404, detail=f"No transaction with id {txn_id}")
+
+    txn.custom_category = body.custom_category
+    db.commit()
+    db.refresh(txn)
+
+    recompute_budget_periods_for_month(db, txn.date.replace(day=1))
+    db.refresh(txn)
+    return txn

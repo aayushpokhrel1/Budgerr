@@ -121,8 +121,11 @@ def _spent_for_category(db: Session, category: Category, month_start: date, mont
     return float(query.scalar())
 
 
-@router.post("/budget-periods/recompute", response_model=RecomputeResponse)
-def recompute_budget_periods(month: date, db: Session = Depends(get_db)) -> RecomputeResponse:
+def recompute_budget_periods_for_month(db: Session, month: date) -> RecomputeResponse:
+    """Core recompute logic, reusable outside this router (e.g. plaid.py calls
+    this after a transaction sync or re-categorization so spent/remaining
+    reflects reality without the caller having to know about this endpoint).
+    """
     month_start, month_end = _month_bounds(month)
     categories = db.query(Category).all()
 
@@ -192,6 +195,11 @@ def recompute_budget_periods(month: date, db: Session = Depends(get_db)) -> Reco
         db.refresh(alert)
 
     return RecomputeResponse(budget_periods=periods, alerts_fired=alerts_fired)
+
+
+@router.post("/budget-periods/recompute", response_model=RecomputeResponse)
+def recompute_budget_periods(month: date, db: Session = Depends(get_db)) -> RecomputeResponse:
+    return recompute_budget_periods_for_month(db, month)
 
 
 @router.get("/budget-periods", response_model=list[BudgetPeriodRead])
