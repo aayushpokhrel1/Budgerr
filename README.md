@@ -113,10 +113,13 @@ alerts(alert_id, category_id, threshold_pct, triggered_at, message)
 
 ## 6. Basketball Dashboard Integration
 
-The basketball stats/edge/parlay-optimizer project ([`playstat`](https://github.com/aayushpokhrel1/Playstat)) stays a fully separate backend and Postgres instance — no shared database, no merged schema. The tie-in is a single read: playstat's API exposes `GET /edges` (today's positive-edge legs — player, stat, line, side, odds), and both Budgerr frontends (`budgerr-app`, `budgerr-web`) call it directly from the Log-a-bet form's "Tonight's edges" panel, letting you pre-fill a leg in one click instead of typing player/line/odds by hand.
+The basketball stats/edge/parlay-optimizer project ([`playstat`](https://github.com/aayushpokhrel1/Playstat)) stays a fully separate backend and Postgres instance — no shared database, no merged schema. Both Budgerr frontends (`budgerr-app`, `budgerr-web`) call playstat's API directly (no backend proxy):
+
+- `GET /edges` (today's positive-edge legs — player, stat, line, side, odds) — the Log-a-bet form's "Tonight's edges" panel uses this to pre-fill a leg in one click instead of typing player/line/odds by hand
+- `GET /games?date=&sport=` (added for this feature — every game on the date, not just legs with a positive edge, so the slate shows up even before `prop_lines`/`edges` have real data)
+- **Tonight glance view — done**: a dedicated screen (`app/(tabs)/tonight.tsx` on mobile, `/tonight` on web) combining the remaining betting-budget card with tonight's full slate (`/games`) and any positive edges per game (`/edges`, grouped by `game_id`) — the original single-glance vision from Section 1, now built
 
 - Playstat needs `CORSMiddleware` configured (`CORS_ORIGINS` env var) so the browser-based `budgerr-web` client can call it directly
-- Not built yet: the original vision of a single glance view showing tonight's full slate *and* remaining betting budget together — what exists today is narrower (pre-fill only), scoped to whatever `/edges` already returns
 - Still true either way: two backends, no shared Postgres, decide on merging later only if it turns out to matter
 
 ---
@@ -242,7 +245,7 @@ Two realistic options:
 7. Budget tab in the RN app (`budgerr-app` repo)
 8. Web mirror in Next.js (`budgerr-web` repo)
 9. Deploy to VPS or home server
-10. Basketball dashboard tie-in (playstat `/edges` → bet quick-entry pre-fill) — done; the fuller tonight's-slate glance view remains optional future work
+10. Basketball dashboard tie-in — done: playstat `/edges` → bet quick-entry pre-fill, and the combined tonight's-slate + remaining-budget glance view (Section 6)
 
 ---
 
@@ -257,3 +260,16 @@ Not part of the current build, but worth having on paper if it ever comes up:
 - **Hosting cost model**: moves from a $5/mo VPS to something that scales with users — a deliberate re-architecture, not a config change.
 
 None of this blocks anything in the personal build — it's here so a future "should we open this up" conversation starts from a plan instead of a scramble.
+
+---
+
+## 14. Feature Roadmap (personal scope)
+
+The Section 12 build order is done; this is the next layer, roughly in value-per-effort order:
+
+1. **Schedule the built-but-unscheduled jobs** — `POST /bets/auto-settle`, Plaid transaction sync, and alert threshold checks all exist but nothing triggers them (Section 8). Highest value, lowest effort: a few cron entries / launchd jobs (auto-settle daily after playstat's 8am box-score backfill).
+2. **Multi-sport stat types from playstat** — playstat now ingests MLB (2026 season backfilled; NFL later, see playstat README §13). Auto-settlement currently only resolves `points|rebounds|assists`; playstat's `/box-scores` now returns a generic per-player `stats` map (e.g. `{"hits": 2, "total_bases": 5, ...}`) plus a `sport` field alongside the legacy NBA fields, so the settlement code can switch to reading `stats[leg.stat_type]` and support MLB legs directly. MLB stat types playstat tracks: `hits`, `total_bases`, `home_runs`, `rbis`, `runs`, `stolen_bases`, `batter_strikeouts`, `walks` (batters); `pitcher_strikeouts`, `earned_runs`, `hits_allowed`, `walks_allowed`, `outs_recorded` (pitchers). Until this is done, MLB legs just stay pending for manual settlement — degraded, not broken.
+3. **The original "one glance" view** — tonight's slate + remaining betting budget together (Section 6 flags this as not built; only the pre-fill tie-in exists). With MLB edges flowing from playstat in July, this view would finally have live content year-round rather than only during the NBA season.
+4. **Bet performance analytics** — once settled bets accumulate: ROI by sportsbook / bet type / stat type, and crucially *actual hit rate vs. the model's predicted probability* on bets actually placed. That's a real-money calibration check that playstat's backtester can't do on its own, and it closes the loop between the two projects.
+5. **Recurring-charge detection** — flag transactions that repeat monthly at the same merchant/amount (subscription creep). All the data is already flowing via Plaid; this is pure analysis on `transactions`.
+6. **Rotating-category reminder** — Section 7.3 describes a reminder tied to `card_reward_rates.effective_end`; confirm it's actually wired to a notification and build it if not (natural to bundle with item 1's scheduler work).
