@@ -4,14 +4,15 @@
     {
       "name": "budgerr-app",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/aayushpokhrel/Documents/BudgerrApp && npx expo start --web"],
+      "runtimeArgs": ["-c", "cd /Users/aayushpokhrel/dev/BudgerrApp && npx expo start --web"],
       "port": 8081
     },
     {
       "name": "budgerr-web",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/aayushpokhrel/Documents/budgerr-web && npm run dev"],
-      "port": 3000
+      "runtimeArgs": ["-c", "cd /Users/aayushpokhrel/dev/budgerr-web && npm run dev"],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }
