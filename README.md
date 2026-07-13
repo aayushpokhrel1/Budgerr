@@ -102,11 +102,11 @@ alerts(alert_id, category_id, threshold_pct, triggered_at, message)
 
 ## 6. Basketball Dashboard Integration
 
-Since you're already building the stats/edge/parlay-optimizer dashboard as a separate project, the natural tie-in point is a single view that shows, before you open any betting app:
-- Tonight's games and player projections vs. lines (from the basketball project)
-- Your remaining betting budget for the month (from this project)
+The basketball stats/edge/parlay-optimizer project ([`playstat`](https://github.com/aayushpokhrel1/Playstat)) stays a fully separate backend and Postgres instance — no shared database, no merged schema. The tie-in is a single read: playstat's API exposes `GET /edges` (today's positive-edge legs — player, stat, line, side, odds), and both Budgerr frontends (`budgerr-app`, `budgerr-web`) call it directly from the Log-a-bet form's "Tonight's edges" panel, letting you pre-fill a leg in one click instead of typing player/line/odds by hand.
 
-These can stay two backends sharing one Postgres instance and one frontend, or merge later — worth deciding once both are far enough along to see how much they actually overlap.
+- Playstat needs `CORSMiddleware` configured (`CORS_ORIGINS` env var) so the browser-based `budgerr-web` client can call it directly
+- Not built yet: the original vision of a single glance view showing tonight's full slate *and* remaining betting budget together — what exists today is narrower (pre-fill only), scoped to whatever `/edges` already returns
+- Still true either way: two backends, no shared Postgres, decide on merging later only if it turns out to matter
 
 ---
 
@@ -201,6 +201,14 @@ Both clients require the backend's CORS origins (`CORS_ORIGINS` in `backend/.env
 
 ## 11. Deployment (Personal Use)
 
+### 11.1 Current setup: always-on local backend (interim)
+
+Until real deployment happens, the backend runs locally via a `launchd` LaunchAgent (`~/Library/LaunchAgents/com.budgerr.backend.plist`, not tracked in git) so it survives logout/reboot and auto-restarts on crash, with Postgres running in Docker (`restart: unless-stopped`).
+
+All four related projects (`Budgerr`, `budgerr-app`, `budgerr-web`, and the separate `playstat` project) live under `~/dev`, not `~/Documents` — `~/Documents` is iCloud-synced on this machine, and that sync caused intermittent file-read deadlocks (`OSError: [Errno 11]`) specifically for `launchd`-spawned processes. Python venvs and `node_modules` aren't portable between the two (they embed absolute paths), so moving any of these projects again means rebuilding those, not just copying the folder.
+
+### 11.2 Eventual real deployment
+
 Two realistic options:
 
 | Option | Notes |
@@ -223,7 +231,7 @@ Two realistic options:
 7. Budget tab in the RN app (`budgerr-app` repo)
 8. Web mirror in Next.js (`budgerr-web` repo)
 9. Deploy to VPS or home server
-10. (Optional) Wire in the basketball dashboard's tonight's-slate view
+10. Basketball dashboard tie-in (playstat `/edges` → bet quick-entry pre-fill) — done; the fuller tonight's-slate glance view remains optional future work
 
 ---
 
