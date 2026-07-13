@@ -5,3 +5,4 @@ __pycache__/
 *.egg-info/
 backend/backend.log
 backend/backend.error.log
+backend/auto-settle.log
