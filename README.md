@@ -50,9 +50,20 @@ manual quick-entry flow covers all of them consistently.
 - Target: under 15 seconds per bet. Pre-fill where possible — pull tonight's slate
   from the basketball model so you're selecting from a list of tonight's players/props
   rather than typing names and lines by hand
-- **Settlement**: start with a manual won/lost/push toggle once a bet settles;
-  automate later by cross-referencing final box scores (already in your
-  `player_game_stats` table from API-Basketball) against open `bet_legs`
+- **Settlement**: a manual won/lost/push toggle (`PATCH /bets/{bet_id}/settle`)
+  remains for anything auto-settlement can't resolve — non-prop bets, or props
+  on stats playstat doesn't track
+- **Auto-settlement — done**: `POST /bets/auto-settle` cross-references pending
+  `bet_legs` against playstat's `GET /box-scores?date=` (new endpoint, final
+  games only — `games.status = 'FT'`), matched on the bet's `placed_at` date
+  and `player_name`. A leg resolves if its `stat_type` is one playstat tracks
+  (`points` | `rebounds` | `assists`) and the player's box score for that date
+  is available; parlays win only if every leg wins (any loss fails the whole
+  bet, a push-only combination pushes). Anything unresolvable — game not final
+  yet, unrecognized stat, name mismatch, non-prop bet with no player/stat —
+  is left pending and retried on the next call. Not yet wired to a schedule;
+  currently a manually/externally triggered endpoint (e.g. cron hitting it
+  daily after playstat's 8am box-score backfill)
 
 **What stays automated**
 
@@ -165,7 +176,7 @@ your real transaction data to check against.
 ## 8. Backend / API
 
 - Python, FastAPI
-- Scheduled jobs (cron or a simple task queue): Plaid transaction sync, alert threshold checks, box-score cross-reference for auto-settlement
+- Scheduled jobs (cron or a simple task queue) — still TODO: Plaid transaction sync, alert threshold checks. Box-score cross-reference logic exists (`POST /bets/auto-settle`, Section 3.2) but isn't on a schedule yet
 - One internal API serving both the budgeting data and (optionally) the basketball model outputs to a shared frontend
 
 ## 9. Frontend

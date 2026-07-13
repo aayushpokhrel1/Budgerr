@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:8081,http://localhost:3000"
 
+    playstat_base_url: str = "http://localhost:8000"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

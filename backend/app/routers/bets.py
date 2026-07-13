@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, selectinload
 
+from app.auto_settlement import auto_settle_pending_bets
 from app.deps import get_db
 from app.models import Bet, BetLeg, BetStatus, BetType, Transaction
 
@@ -144,6 +145,19 @@ def bet_trend(start: date, end: date, db: Session = Depends(get_db)) -> NetResul
         for month in all_months
     ]
     return NetResultTrendResponse(by_month=by_month)
+
+
+class AutoSettleResponse(BaseModel):
+    settled_bet_ids: list[int]
+
+
+@router.post("/auto-settle", response_model=AutoSettleResponse)
+def auto_settle(db: Session = Depends(get_db)) -> AutoSettleResponse:
+    """Cross-references pending bets against playstat's finalized box scores
+    and settles whatever can be resolved. Safe to call repeatedly (e.g. on a
+    daily schedule) — unresolvable bets are simply left pending.
+    """
+    return AutoSettleResponse(settled_bet_ids=auto_settle_pending_bets(db))
 
 
 @router.get("/{bet_id}", response_model=BetRead)
