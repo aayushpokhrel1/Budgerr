@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
@@ -514,3 +514,61 @@ def rewards_left_on_table(
     total_gap = round(sum(m.gap_dollars for m in by_month), 2)
 
     return LeftOnTableResponse(total_gap_dollars=total_gap, by_month=by_month)
+
+
+# ---- Expiring bonus-rate reminders ----
+
+
+class ExpiringRateRead(BaseModel):
+    rate_id: int
+    card_id: int
+    card_name: str
+    category_id: int
+    category_name: str
+    multiplier: float
+    effective_end: date
+    days_left: int
+
+
+class ExpiringRatesResponse(BaseModel):
+    expiring: list[ExpiringRateRead]
+
+
+@router.get("/expiring-rates", response_model=ExpiringRatesResponse)
+def expiring_rates(within_days: int = 45, db: Session = Depends(get_db)) -> ExpiringRatesResponse:
+    """Reward rates whose bonus window is ending soon (or ended recently),
+    for in-app reminder banners — no push infra, just a dashboard check."""
+    today = date.today()
+    window_start = today - timedelta(days=7)
+    window_end = today + timedelta(days=within_days)
+
+    rates = (
+        db.query(CardRewardRate)
+        .filter(
+            CardRewardRate.effective_end.isnot(None),
+            CardRewardRate.effective_end >= window_start,
+            CardRewardRate.effective_end <= window_end,
+        )
+        .all()
+    )
+
+    cards_by_id = {c.card_id: c for c in db.query(CreditCard).all()}
+    categories_by_id = {c.category_id: c for c in db.query(Category).all()}
+
+    expiring = [
+        ExpiringRateRead(
+            rate_id=rate.rate_id,
+            card_id=rate.card_id,
+            card_name=cards_by_id[rate.card_id].name,
+            category_id=rate.category_id,
+            category_name=categories_by_id[rate.category_id].name,
+            multiplier=float(rate.multiplier),
+            effective_end=rate.effective_end,
+            days_left=(rate.effective_end - today).days,
+        )
+        for rate in rates
+        if rate.card_id in cards_by_id and rate.category_id in categories_by_id
+    ]
+    expiring.sort(key=lambda r: r.effective_end)
+
+    return ExpiringRatesResponse(expiring=expiring)

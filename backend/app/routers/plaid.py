@@ -17,6 +17,7 @@ from app.betting_detection import is_betting_merchant
 from app.deps import get_db
 from app.models import Account, Category, PlaidItem, Transaction
 from app.plaid_client import PlaidNotConfiguredError, get_plaid_client
+from app.recurring import detect_recurring_charges
 from app.routers.budgeting import recompute_budget_periods_for_month
 
 router = APIRouter(prefix="/plaid", tags=["plaid"])
@@ -335,3 +336,51 @@ def categorize_transaction(
     recompute_budget_periods_for_month(db, txn.date.replace(day=1))
     db.refresh(txn)
     return txn
+
+
+class RecurringChargeRead(BaseModel):
+    merchant_name: str
+    last_amount: float
+    avg_amount: float
+    occurrences: int
+    first_date: date
+    last_date: date
+    median_interval_days: float
+    active: bool
+    monthly_estimate: float
+
+
+class RecurringChargesResponse(BaseModel):
+    recurring: list[RecurringChargeRead]
+    monthly_total: float
+
+
+@router.get("/recurring-charges", response_model=RecurringChargesResponse)
+def recurring_charges(db: Session = Depends(get_db)) -> RecurringChargesResponse:
+    """Detects subscription-like recurring charges by clustering transactions
+    per merchant by amount, then checking for >=3 occurrences with a roughly
+    monthly (20-40 day median) gap between them. See app/recurring.py for the
+    pure detection logic.
+    """
+    transactions = db.query(Transaction).all()
+    clusters = detect_recurring_charges(transactions)
+
+    monthly_total = round(sum(c.monthly_estimate for c in clusters if c.active), 2)
+
+    return RecurringChargesResponse(
+        recurring=[
+            RecurringChargeRead(
+                merchant_name=c.merchant_name,
+                last_amount=c.last_amount,
+                avg_amount=c.avg_amount,
+                occurrences=c.occurrences,
+                first_date=c.first_date,
+                last_date=c.last_date,
+                median_interval_days=c.median_interval_days,
+                active=c.active,
+                monthly_estimate=c.monthly_estimate,
+            )
+            for c in clusters
+        ],
+        monthly_total=monthly_total,
+    )

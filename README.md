@@ -186,7 +186,9 @@ your real transaction data to check against.
 
 - Rotating-category cards (5% quarterly categories) need a quick manual update
   each quarter when the new categories are announced — a reminder/notification
-  tied to `effective_end` dates is enough to keep this from going stale
+  tied to `effective_end` dates is enough to keep this from going stale. This is
+  now served by `GET /rewards/expiring-rates` for dashboard banners in both
+  frontends
 - `card_reward_progress` resets automatically at each `cap_period` boundary
 
 ### 7.4 Automated rate lookup — built, not yet enabled
@@ -301,5 +303,5 @@ The Section 12 build order is done; this is the next layer, roughly in value-per
 2. ~~Multi-sport stat types from playstat~~ — **done** (Section 3.2): settlement reads `stats[leg.stat_type]` from playstat's per-player `stats` map (any stat playstat tracks, MLB hitter/pitcher props included), with the legacy top-level `points|rebounds|assists` fields as an NBA fallback. Unresolvable legs still stay pending. Covered by `backend/tests/test_auto_settlement.py`.
 3. ~~The original "one glance" view~~ — **done** (Section 6): the Tonight screen combines remaining betting budget, the full slate via playstat's `/games`, and per-game edges. With MLB now ingested in playstat, it has live content in July rather than only during the NBA season.
 4. **Bet performance analytics** — backend done: `GET /bets/analytics?scope=real|paper` returns ROI by sportsbook / bet type / stat type, plus decile-bucketed *actual hit rate vs. the model's predicted probability* over settled bets. Frontend views (charts/tables on top of this endpoint) still tracked separately.
-5. **Recurring-charge detection** — flag transactions that repeat monthly at the same merchant/amount (subscription creep). All the data is already flowing via Plaid; this is pure analysis on `transactions`.
-6. **Rotating-category reminder** — Section 7.3 describes a reminder tied to `card_reward_rates.effective_end`; confirm it's actually wired to a notification and build it if not (natural to bundle with item 1's scheduler work).
+5. ~~Recurring-charge detection~~ — **done**: `GET /plaid/recurring-charges` groups transactions by merchant (case/whitespace-normalized), greedily clusters by amount (within 10% of the cluster's running median), and flags a cluster as recurring when it has >=3 occurrences with a 20-40 day median gap between dates. Pure detection logic lives in `app/recurring.py` (unit-tested without a DB in `backend/tests/test_recurring.py`); the endpoint just queries `transactions` once and delegates to it.
+6. ~~Rotating-category reminder~~ — **done**: `GET /rewards/expiring-rates?within_days=45` surfaces `card_reward_rate` rows whose `effective_end` falls in `[today - 7 days, today + within_days]`, for dashboard banners in both frontends — no push infra, a deliberate choice to keep this simple for a single-user app you check daily anyway.
