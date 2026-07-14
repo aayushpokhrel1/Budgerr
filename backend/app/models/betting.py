@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -38,6 +38,9 @@ class Bet(Base):
     )
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     net_result: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    # Paper bets carry hypothetical stake/payout for ROI tracking but are
+    # excluded from real-money P/L aggregations.
+    is_paper: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     legs: Mapped[list["BetLeg"]] = relationship(back_populates="bet", cascade="all, delete-orphan")
 
@@ -54,6 +57,9 @@ class BetLeg(Base):
     line_value: Mapped[float | None] = mapped_column(Numeric(6, 2))
     side: Mapped[str | None] = mapped_column(String)
     odds: Mapped[int | None] = mapped_column()
+    # Model-predicted win probability at log time (from playstat /edges),
+    # kept for hit-rate-vs-model calibration once bets settle.
+    model_prob: Mapped[float | None] = mapped_column(Float)
     leg_status: Mapped[BetStatus] = mapped_column(
         Enum(BetStatus, name="bet_status"), nullable=False, default=BetStatus.pending
     )
