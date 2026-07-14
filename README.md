@@ -32,9 +32,10 @@ Manual quick-entry ──────────┘
 - Build against **Sandbox** (fake data) first, confirm the pipeline works end to end, then switch to real accounts
 - Plaid's Transactions API + webhook keeps new transactions flowing in without polling
 - Institution name is resolved via Plaid's `/institutions/get_by_id` at link time (not the raw `institution_id`, e.g. `ins_10`) so linked accounts show as "American Express", not an opaque ID
-- `GET /plaid/accounts` and `GET /plaid/transactions` (web: `/accounts`, `/transactions`) surface what's already synced — these didn't exist for a while, so linking a bank account had nowhere to show up
-- `PATCH /plaid/transactions/{txn_id}` sets a transaction's `custom_category` (a dropdown of your budget categories on the web transactions page); syncing also best-effort auto-categorizes by matching Plaid's own category string against your category names, without overriding anything you've already set manually
-- Every sync, categorization change, and dashboard load recomputes `budget_periods` for the affected month(s) — a category you create now actually shows spent/remaining instead of silently having no period row until something happened to trigger a recompute
+- `GET /plaid/accounts` and `GET /plaid/transactions` surface what's already synced — these didn't exist for a while, so linking a bank account had nowhere to show up. Both frontends now have Accounts and Transactions screens (web: `/accounts`, `/transactions`; mobile: two new tabs)
+- `PATCH /plaid/transactions/{txn_id}` sets a transaction's `custom_category` (a category dropdown on web, a bottom-sheet picker on mobile); syncing also best-effort auto-categorizes by matching Plaid's own category string against your category names, without overriding anything you've already set manually
+- Every sync, categorization change, and dashboard/Budget-tab load recomputes `budget_periods` for the affected month(s) — a category you create now actually shows spent/remaining instead of silently having no period row until something happened to trigger a recompute
+- Bank *linking* (Plaid Link) is still web-only — the mobile client would need the native Plaid Link SDK, a separate, bigger lift. Link via the web app; linked accounts show up on mobile too since both clients share the same backend
 
 ### 3.2 Betting data — manual quick-entry
 
