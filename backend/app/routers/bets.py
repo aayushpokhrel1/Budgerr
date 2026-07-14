@@ -18,6 +18,7 @@ class BetLegCreate(BaseModel):
     line_value: float | None = None
     side: str | None = None
     odds: int | None = None
+    model_prob: float | None = None
 
 
 class BetLegRead(BaseModel):
@@ -30,6 +31,7 @@ class BetLegRead(BaseModel):
     side: str | None
     odds: int | None
     leg_status: BetStatus
+    model_prob: float | None
 
 
 class BetCreate(BaseModel):
@@ -38,6 +40,7 @@ class BetCreate(BaseModel):
     stake: float
     potential_payout: float
     placed_at: datetime | None = None
+    is_paper: bool = False
     legs: list[BetLegCreate] = []
 
 
@@ -53,6 +56,7 @@ class BetRead(BaseModel):
     status: BetStatus
     settled_at: datetime | None
     net_result: float | None
+    is_paper: bool
     legs: list[BetLegRead]
 
 
@@ -74,6 +78,7 @@ def create_bet(body: BetCreate, db: Session = Depends(get_db)) -> Bet:
         potential_payout=body.potential_payout,
         placed_at=body.placed_at or datetime.now(timezone.utc),
         status=BetStatus.pending,
+        is_paper=body.is_paper,
         legs=[BetLeg(**leg.model_dump()) for leg in body.legs],
     )
     db.add(bet)
@@ -112,10 +117,19 @@ def bet_trend(start: date, end: date, db: Session = Depends(get_db)) -> NetResul
       received back), grouped by transaction date.
     These can diverge — e.g. a bet settled this month funded from an existing
     sportsbook balance won't show up on the bank side until you withdraw.
+
+    Paper bets (is_paper=True) are excluded from bet_net_profit/bets_settled
+    since they carry no real money — the bank-transaction side is unaffected
+    since paper bets never produce real transactions anyway.
     """
     settled_bets = (
         db.query(Bet)
-        .filter(Bet.settled_at.isnot(None), Bet.settled_at >= start, Bet.settled_at < end)
+        .filter(
+            Bet.settled_at.isnot(None),
+            Bet.settled_at >= start,
+            Bet.settled_at < end,
+            Bet.is_paper.is_(False),
+        )
         .all()
     )
     bet_monthly: dict[date, dict[str, float]] = defaultdict(lambda: {"profit": 0.0, "count": 0})

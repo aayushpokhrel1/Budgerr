@@ -6,19 +6,23 @@ from sqlalchemy.orm import Session, selectinload
 from app.models import Bet, BetLeg, BetStatus
 from app.playstat_client import get_box_scores
 
-PLAYER_STAT_FIELDS = {"points", "rebounds", "assists"}
+LEGACY_PLAYER_STAT_FIELDS = {"points", "rebounds", "assists"}
 
 
 def _leg_result(leg: BetLeg, box_scores_by_player: dict[str, dict]) -> BetStatus | None:
     """Returns the leg's outcome if it can be resolved from today's box scores,
     or None if it can't (game not final yet, unrecognized stat/side, name
     mismatch) — those legs are simply left pending for the next run.
+
+    playstat's box-score rows expose a generic per-player ``stats`` map
+    (covering hitter and pitcher stat types across sports, e.g. MLB). Legacy
+    NBA rows also carry top-level points/rebounds/assists fields; those are
+    used as a fallback when the stat isn't present in ``stats`` so existing
+    NBA behavior is unchanged.
     """
     if not leg.player_name or not leg.stat_type or leg.line_value is None or not leg.side:
         return None
     stat_type = leg.stat_type.strip().lower()
-    if stat_type not in PLAYER_STAT_FIELDS:
-        return None
     side = leg.side.strip().lower()
     if side not in ("over", "under"):
         return None
@@ -26,7 +30,10 @@ def _leg_result(leg: BetLeg, box_scores_by_player: dict[str, dict]) -> BetStatus
     box = box_scores_by_player.get(leg.player_name.strip().lower())
     if box is None:
         return None
-    actual = box.get(stat_type)
+
+    actual = (box.get("stats") or {}).get(stat_type)
+    if actual is None and stat_type in LEGACY_PLAYER_STAT_FIELDS:
+        actual = box.get(stat_type)
     if actual is None:
         return None
 

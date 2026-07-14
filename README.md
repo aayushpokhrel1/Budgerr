@@ -61,14 +61,24 @@ manual quick-entry flow covers all of them consistently.
 - **Auto-settlement — done**: `POST /bets/auto-settle` cross-references pending
   `bet_legs` against playstat's `GET /box-scores?date=` (new endpoint, final
   games only — `games.status = 'FT'`), matched on the bet's `placed_at` date
-  and `player_name`. A leg resolves if its `stat_type` is one playstat tracks
-  (`points` | `rebounds` | `assists`) and the player's box score for that date
-  is available; parlays win only if every leg wins (any loss fails the whole
+  and `player_name`. A leg resolves if its `stat_type` appears in the player's
+  per-player `stats` map for that date (playstat's generic multi-sport stats —
+  MLB hitter/pitcher props included), falling back to the legacy top-level
+  `points` | `rebounds` | `assists` fields for NBA rows; parlays win only if
+  every leg wins (any loss fails the whole
   bet, a push-only combination pushes). Anything unresolvable — game not final
   yet, unrecognized stat, name mismatch, non-prop bet with no player/stat —
-  is left pending and retried on the next call. Not yet wired to a schedule;
-  currently a manually/externally triggered endpoint (e.g. cron hitting it
-  daily after playstat's 8am box-score backfill)
+  is left pending and retried on the next call. Scheduled via launchd
+  (`com.budgerr.auto-settle`, daily 8:30am — after playstat's 8am box-score
+  backfill; see Section 8)
+- **Paper bets**: `bets.is_paper` logs a bet with a *hypothetical*
+  stake/payout — it auto-settles exactly like a real bet but is excluded from
+  the real-money P/L in `GET /bets/trend`, so model parlay recommendations can
+  be tracked risk-free. Legs store `model_prob` (playstat's predicted win
+  probability at log time) for the future hit-rate-vs-model calibration check
+  (Section 14 item 4). Both frontends expose "Log as paper bet" on the Tonight
+  view's parlay cards (convention: `sportsbook = "paper"`, default $10
+  hypothetical stake)
 
 **What stays automated**
 
@@ -288,7 +298,7 @@ None of this blocks anything in the personal build — it's here so a future "sh
 The Section 12 build order is done; this is the next layer, roughly in value-per-effort order:
 
 1. ~~Schedule the built-but-unscheduled jobs~~ — **done** (Section 8): auto-settle (launchd, daily 8:30am) and Plaid sync via the new `POST /plaid/sync-all` (launchd, daily 7:00am); alert-threshold checks run inside sync's budget-period recompute.
-2. **Multi-sport stat types from playstat** — playstat now ingests MLB (2026 season backfilled; NFL later, see playstat README §13). Auto-settlement currently only resolves `points|rebounds|assists`; playstat's `/box-scores` now returns a generic per-player `stats` map (e.g. `{"hits": 2, "total_bases": 5, ...}`) plus a `sport` field alongside the legacy NBA fields, so the settlement code can switch to reading `stats[leg.stat_type]` and support MLB legs directly. MLB stat types playstat tracks: `hits`, `total_bases`, `home_runs`, `rbis`, `runs`, `stolen_bases`, `batter_strikeouts`, `walks` (batters); `pitcher_strikeouts`, `earned_runs`, `hits_allowed`, `walks_allowed`, `outs_recorded` (pitchers). Until this is done, MLB legs just stay pending for manual settlement — degraded, not broken.
+2. ~~Multi-sport stat types from playstat~~ — **done** (Section 3.2): settlement reads `stats[leg.stat_type]` from playstat's per-player `stats` map (any stat playstat tracks, MLB hitter/pitcher props included), with the legacy top-level `points|rebounds|assists` fields as an NBA fallback. Unresolvable legs still stay pending. Covered by `backend/tests/test_auto_settlement.py`.
 3. ~~The original "one glance" view~~ — **done** (Section 6): the Tonight screen combines remaining betting budget, the full slate via playstat's `/games`, and per-game edges. With MLB now ingested in playstat, it has live content in July rather than only during the NBA season.
 4. **Bet performance analytics** — once settled bets accumulate: ROI by sportsbook / bet type / stat type, and crucially *actual hit rate vs. the model's predicted probability* on bets actually placed. That's a real-money calibration check that playstat's backtester can't do on its own, and it closes the loop between the two projects.
 5. **Recurring-charge detection** — flag transactions that repeat monthly at the same merchant/amount (subscription creep). All the data is already flowing via Plaid; this is pure analysis on `transactions`.
