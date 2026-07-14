@@ -199,7 +199,7 @@ from console.anthropic.com when ready to actually use this; until then
 ## 8. Backend / API
 
 - Python, FastAPI
-- Scheduled jobs (cron or a simple task queue) — still TODO: Plaid transaction sync, alert threshold checks. Box-score cross-reference logic exists (`POST /bets/auto-settle`, Section 3.2) but isn't on a schedule yet
+- Scheduled jobs — all wired via launchd LaunchAgents: `com.budgerr.auto-settle` (daily 8:30am, after playstat's 8am box-score backfill) hits `POST /bets/auto-settle`, and `com.budgerr.plaid-sync` (daily 7:00am) hits `POST /plaid/sync-all`, which syncs every linked Plaid item (tolerating per-item failures) and recomputes budget periods per touched month — alert-threshold checks run inside that recompute, so they need no separate job
 - One internal API serving both the budgeting data and (optionally) the basketball model outputs to a shared frontend
 
 ## 9. Frontend
@@ -287,7 +287,7 @@ None of this blocks anything in the personal build — it's here so a future "sh
 
 The Section 12 build order is done; this is the next layer, roughly in value-per-effort order:
 
-1. **Schedule the built-but-unscheduled jobs** — `POST /bets/auto-settle`, Plaid transaction sync, and alert threshold checks all exist but nothing triggers them (Section 8). Highest value, lowest effort: a few cron entries / launchd jobs (auto-settle daily after playstat's 8am box-score backfill).
+1. ~~Schedule the built-but-unscheduled jobs~~ — **done** (Section 8): auto-settle (launchd, daily 8:30am) and Plaid sync via the new `POST /plaid/sync-all` (launchd, daily 7:00am); alert-threshold checks run inside sync's budget-period recompute.
 2. **Multi-sport stat types from playstat** — playstat now ingests MLB (2026 season backfilled; NFL later, see playstat README §13). Auto-settlement currently only resolves `points|rebounds|assists`; playstat's `/box-scores` now returns a generic per-player `stats` map (e.g. `{"hits": 2, "total_bases": 5, ...}`) plus a `sport` field alongside the legacy NBA fields, so the settlement code can switch to reading `stats[leg.stat_type]` and support MLB legs directly. MLB stat types playstat tracks: `hits`, `total_bases`, `home_runs`, `rbis`, `runs`, `stolen_bases`, `batter_strikeouts`, `walks` (batters); `pitcher_strikeouts`, `earned_runs`, `hits_allowed`, `walks_allowed`, `outs_recorded` (pitchers). Until this is done, MLB legs just stay pending for manual settlement — degraded, not broken.
 3. ~~The original "one glance" view~~ — **done** (Section 6): the Tonight screen combines remaining betting budget, the full slate via playstat's `/games`, and per-game edges. With MLB now ingested in playstat, it has live content in July rather than only during the NBA season.
 4. **Bet performance analytics** — once settled bets accumulate: ROI by sportsbook / bet type / stat type, and crucially *actual hit rate vs. the model's predicted probability* on bets actually placed. That's a real-money calibration check that playstat's backtester can't do on its own, and it closes the loop between the two projects.

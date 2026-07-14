@@ -260,6 +260,28 @@ def sync_transactions(item_id: str, db: Session = Depends(get_db)) -> SyncTransa
     )
 
 
+class SyncAllResponse(BaseModel):
+    synced: dict[str, SyncTransactionsResponse]
+    errors: dict[str, str]
+
+
+@router.post("/sync-all", response_model=SyncAllResponse)
+def sync_all_transactions(db: Session = Depends(get_db)) -> SyncAllResponse:
+    """Syncs every linked Plaid item, tolerating per-item failures — meant for
+    the scheduled daily sync, where one broken item shouldn't block the rest.
+    Budget-period recompute (and therefore alert-threshold checks) runs inside
+    each item's sync.
+    """
+    synced: dict[str, SyncTransactionsResponse] = {}
+    errors: dict[str, str] = {}
+    for item in db.query(PlaidItem).all():
+        try:
+            synced[item.item_id] = sync_transactions(item.item_id, db)
+        except HTTPException as exc:
+            errors[item.item_id] = str(exc.detail)
+    return SyncAllResponse(synced=synced, errors=errors)
+
+
 class TransactionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
