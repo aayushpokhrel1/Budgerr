@@ -1,11 +1,13 @@
 from collections import defaultdict
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, selectinload
 
 from app.auto_settlement import auto_settle_pending_bets
+from app.bet_analytics import compute_analytics
 from app.deps import get_db
 from app.models import Bet, BetLeg, BetStatus, BetType, Transaction
 
@@ -172,6 +174,78 @@ def auto_settle(db: Session = Depends(get_db)) -> AutoSettleResponse:
     daily schedule) — unresolvable bets are simply left pending.
     """
     return AutoSettleResponse(settled_bet_ids=auto_settle_pending_bets(db))
+
+
+class GroupStats(BaseModel):
+    key: str
+    settled: int
+    wins: int
+    losses: int
+    pushes: int
+    total_staked: float
+    net_profit: float
+    roi: float | None
+
+
+class StatTypeStats(BaseModel):
+    key: str
+    legs: int
+    won: int
+    lost: int
+    pushed: int
+    hit_rate: float | None
+
+
+class CalibrationBucket(BaseModel):
+    lo: float
+    hi: float
+    legs: int
+    predicted: float
+    actual: float
+
+
+class Calibration(BaseModel):
+    legs: int
+    overall_predicted: float | None
+    overall_actual: float | None
+    buckets: list[CalibrationBucket]
+
+
+class OverallStats(BaseModel):
+    settled: int
+    wins: int
+    losses: int
+    pushes: int
+    total_staked: float
+    net_profit: float
+    roi: float | None
+
+
+class BetAnalyticsResponse(BaseModel):
+    scope: Literal["real", "paper"]
+    overall: OverallStats
+    by_sportsbook: list[GroupStats]
+    by_bet_type: list[GroupStats]
+    by_stat_type: list[StatTypeStats]
+    calibration: Calibration
+
+
+@router.get("/analytics", response_model=BetAnalyticsResponse)
+def bet_analytics(
+    scope: Literal["real", "paper"] = "real", db: Session = Depends(get_db)
+) -> BetAnalyticsResponse:
+    """Aggregated win/loss, ROI, and model-calibration stats over settled bets.
+
+    scope=real (default) covers is_paper=False bets; scope=paper covers
+    is_paper=True bets. Only settled bets (settled_at is not null) are
+    included.
+    """
+    bets = (
+        _bet_query(db)
+        .filter(Bet.settled_at.isnot(None), Bet.is_paper.is_(scope == "paper"))
+        .all()
+    )
+    return BetAnalyticsResponse(**compute_analytics(bets, scope))
 
 
 @router.get("/{bet_id}", response_model=BetRead)
