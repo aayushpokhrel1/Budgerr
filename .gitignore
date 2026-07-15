@@ -8,3 +8,4 @@ backend/backend.error.log
 backend/auto-settle.log
 graphify-out/
 backend/plaid-sync.log
+backend/auto-log-parlays.log
