@@ -41,6 +41,9 @@ class Bet(Base):
     # Paper bets carry hypothetical stake/payout for ROI tracking but are
     # excluded from real-money P/L aggregations.
     is_paper: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # External identity for automatically logged bets (e.g. "playstat-parlay-11")
+    # so scheduled auto-logging can dedupe across runs.
+    external_ref: Mapped[str | None] = mapped_column(String, unique=True, index=True)
 
     legs: Mapped[list["BetLeg"]] = relationship(back_populates="bet", cascade="all, delete-orphan")
 

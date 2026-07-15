@@ -302,6 +302,49 @@ The Section 12 build order is done; this is the next layer, roughly in value-per
 1. ~~Schedule the built-but-unscheduled jobs~~ — **done** (Section 8): auto-settle (launchd, daily 8:30am) and Plaid sync via the new `POST /plaid/sync-all` (launchd, daily 7:00am); alert-threshold checks run inside sync's budget-period recompute.
 2. ~~Multi-sport stat types from playstat~~ — **done** (Section 3.2): settlement reads `stats[leg.stat_type]` from playstat's per-player `stats` map (any stat playstat tracks, MLB hitter/pitcher props included), with the legacy top-level `points|rebounds|assists` fields as an NBA fallback. Unresolvable legs still stay pending. Covered by `backend/tests/test_auto_settlement.py`.
 3. ~~The original "one glance" view~~ — **done** (Section 6): the Tonight screen combines remaining betting budget, the full slate via playstat's `/games`, and per-game edges. With MLB now ingested in playstat, it has live content in July rather than only during the NBA season.
-4. **Bet performance analytics** — backend done: `GET /bets/analytics?scope=real|paper` returns ROI by sportsbook / bet type / stat type, plus decile-bucketed *actual hit rate vs. the model's predicted probability* over settled bets. Frontend views (charts/tables on top of this endpoint) still tracked separately.
+4. ~~Bet performance analytics~~ — **done**: `GET /bets/analytics?scope=real|paper` returns ROI by sportsbook / bet type / stat type, plus decile-bucketed *actual hit rate vs. the model's predicted probability* over settled bets. Both frontends have an Analytics view on top of it (web `/analytics`, mobile Analytics tab) with a real/paper toggle and predicted-vs-actual calibration bars.
 5. ~~Recurring-charge detection~~ — **done**: `GET /plaid/recurring-charges` groups transactions by merchant (case/whitespace-normalized), greedily clusters by amount (within 10% of the cluster's running median), and flags a cluster as recurring when it has >=3 occurrences with a 20-40 day median gap between dates. Pure detection logic lives in `app/recurring.py` (unit-tested without a DB in `backend/tests/test_recurring.py`); the endpoint just queries `transactions` once and delegates to it.
 6. ~~Rotating-category reminder~~ — **done**: `GET /rewards/expiring-rates?within_days=45` surfaces `card_reward_rate` rows whose `effective_end` falls in `[today - 7 days, today + within_days]`, for dashboard banners in both frontends — no push infra, a deliberate choice to keep this simple for a single-user app you check daily anyway.
+
+All six items above are shipped. Section 15 is the next layer.
+
+---
+
+## 15. Future Roadmap (second layer)
+
+Everything in Sections 12 and 14 is done. This is the forward plan, grouped into four directions (full write-up with effort/value calls lives in the session artifact "Budgerr — What's Next").
+
+### 15.1 Tier A — Close the model loop *(in progress)*
+
+- **Auto-log paper bets** *(building)* — `POST /bets/auto-log-recommendations` pulls playstat's `/parlay-recommendations`, enriches legs with line/date from `/edges`, and logs each as a $10 paper bet; `bets.external_ref` (`"playstat-parlay-{id}"`, unique) dedupes across runs. Scheduled via launchd daily at 9:00am, after playstat's ~8:30am optimizer run — calibration data accrues with zero taps.
+- **Bankroll curve & drawdown** *(building)* — `GET /bets/bankroll?scope=real|paper`: cumulative-P/L time series over settled bets plus max drawdown and longest losing streak; charted on both Analytics views.
+- **Kelly-style stake sizing** *(building)* — ¼-Kelly suggestion shown on the Tonight parlay cards, computed client-side from `joint_prob` + combined odds against the remaining betting budget. Display-only guidance; treat with suspicion until the calibration view validates the model's probabilities.
+- **Bet-slip screenshot import** *(building)* — `POST /bets/parse-slip` sends a sportsbook screenshot to Claude (vision) and returns structured bet fields to pre-fill the quick-entry form for review; returns 501 until `ANTHROPIC_API_KEY` is set, same pattern as Section 7.4.
+- **Closing-line value (CLV)** *(blocked on playstat)* — compare odds taken vs. the closing line, the sharpest long-term edge signal. Needs playstat to store closing lines first; design it from that side.
+
+### 15.2 Tier B — Get off the laptop
+
+- **Auth on the API** — Section 10 requires it; none exists today. Static bearer token middleware + a token field in both clients. Prerequisite for deployment.
+- **Encrypted Postgres backups** — nightly `pg_dump`, encrypt (e.g. `age`), copy off-machine. The other unmet Section 10 non-negotiable.
+- **Deploy** — the Section 11.2 decision: small VPS, or Pi + Tailscale. Move playstat and Budgerr together. Unlocks the phone outside home wifi.
+- **Push notifications** — settlement results, 80%/100% budget alerts, expiring rotating categories. ntfy.sh (one HTTP POST from the backend) is the pragmatic single-user route; Expo push is the native one.
+- **Plaid webhooks** — replace the daily 7am polling sync once a public HTTPS URL exists (post-deployment).
+
+### 15.3 Tier C — Smarter money analysis
+
+- **Price-hike + annual-subscription detection** — extend `app/recurring.py`: flag trending amount drift within a cluster, add a ~365-day cadence pass.
+- **Sportsbook reconciliation** — match `is_betting` bank transactions against logged bets; surface deposits with no corresponding logged bets (the bet log lying by omission).
+- **Cash-flow forecast** — detect income inflows, project each category's end-of-month position from its run rate ("on pace to overshoot Dining by $40").
+- **Turn on the Claude rate lookup** — Section 7.4 is built; just set `ANTHROPIC_API_KEY`. Pairs with the expiring-rate banner at quarter rollovers.
+- **Card-aware "left on the table"** — map Plaid accounts to credit cards so the retrospective report uses the card actually used per transaction.
+
+### 15.4 Tier D — Quality of life
+
+- **Monthly digest** — generated first-of-month summary (spend vs. budget, bet P/L, calibration, subscription changes), delivered over the Tier B notification channel.
+- **Native Plaid Link on mobile** — closes the last web-only gap (Section 3.1).
+- **Biometric lock on mobile** — `expo-local-authentication` gate; it's bank data on a side-loaded APK.
+- **CSV export & year-in-review** — transactions/bets export, plus a December summary.
+
+### 15.5 Recommended sequence
+
+Auto-log paper bets first (every day without it loses calibration data) → auth + backups (small, overdue) → deploy → push notifications → webhooks + price-hike detection + reconciliation → Kelly sizing trusted only after calibration data validates `model_prob`.
