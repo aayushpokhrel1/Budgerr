@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:8081,http://localhost:3000"
 
     playstat_base_url: str = "http://localhost:8000"
+    # playstat enforces X-API-Key auth when its AUTH_ENABLED is set; provision
+    # a "budgerr" key in playstat's PLAYSTAT_API_KEYS and mirror it here.
+    playstat_api_key: str = ""
 
     anthropic_api_key: str = ""
 

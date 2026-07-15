@@ -318,25 +318,28 @@ Everything in Sections 12 and 14 is done. This is the forward plan, grouped into
 
 - **Auto-log paper bets** — `POST /bets/auto-log-recommendations` pulls playstat's `/parlay-recommendations`, enriches legs with line/date from `/edges`, and logs each as a $10 paper bet; `bets.external_ref` (`"playstat-parlay-{id}"`, unique) dedupes across runs. Scheduled via launchd daily at 9:00am, after playstat's ~8:30am optimizer run — calibration data accrues with zero taps.
 - **Bankroll curve & drawdown** — `GET /bets/bankroll?scope=real|paper`: cumulative-P/L time series over settled bets plus max drawdown and longest losing streak; charted on both Analytics views.
-- **Kelly-style stake sizing** *(building)* — ¼-Kelly suggestion shown on the Tonight parlay cards, computed client-side from `joint_prob` + combined odds against the remaining betting budget. Display-only guidance; treat with suspicion until the calibration view validates the model's probabilities.
+- **Kelly-style stake sizing** — ¼-Kelly suggestion shown on the Tonight parlay cards, computed client-side (`lib/kelly.ts`) from `joint_prob` + combined odds against the remaining betting budget. **Web done; mobile TODO** (port `lib/kelly.ts` and the ParlayCard line — see 15.6). Display-only guidance; treat with suspicion until the calibration view validates the model's probabilities.
+- **NFL-readiness** *(free when playstat ships it)* — settlement reads any stat in the `/box-scores` `stats` map, so NFL props (playstat README §13) need zero Budgerr changes; just sanity-check stat-type naming when the time comes.
 - **Bet-slip screenshot import** — backend **done**: `POST /bets/parse-slip` (router `app/routers/bet_import.py`, extraction/parsing logic unit-tested in `app/slip_parser.py`) sends a sportsbook screenshot to Claude (vision, claude-sonnet-5) and returns structured bet fields — nothing is saved; the result pre-fills the quick-entry form for human review. Returns 501 until `ANTHROPIC_API_KEY` is set, same pattern as Section 7.4. Frontend upload UI: web/mobile still TODO (see 15.6).
 - **Closing-line value (CLV)** *(blocked on playstat)* — compare odds taken vs. the closing line, the sharpest long-term edge signal. Needs playstat to store closing lines first; design it from that side.
 
 ### 15.2 Tier B — Get off the laptop
 
-- **Auth on the API** — Section 10 requires it; none exists today. Static bearer token middleware + a token field in both clients. Prerequisite for deployment.
-- **Encrypted Postgres backups** — nightly `pg_dump`, encrypt (e.g. `age`), copy off-machine. The other unmet Section 10 non-negotiable.
-- **Deploy** — the Section 11.2 decision: small VPS, or Pi + Tailscale. Move playstat and Budgerr together. Unlocks the phone outside home wifi.
-- **Push notifications** — settlement results, 80%/100% budget alerts, expiring rotating categories. ntfy.sh (one HTTP POST from the backend) is the pragmatic single-user route; Expo push is the native one.
-- **Plaid webhooks** — replace the daily 7am polling sync once a public HTTPS URL exists (post-deployment).
+- **Auth on the API** — Section 10 requires it; none exists today. Mirror playstat's approach (it now enforces an `X-API-Key` header via a global FastAPI dependency, keys in env as comma-separated `name:key` pairs, `AUTH_ENABLED` kill-switch) so the two backends share one mental model. Both clients attach the key from their env (`NEXT_PUBLIC_…` / `EXPO_PUBLIC_…` is acceptable for a single-user app; the key protects a localhost/Tailscale service, not a public secret). Prerequisite for deployment.
+- **Proxy playstat through the Budgerr backend** — Section 6 originally chose direct browser→playstat calls; playstat's new API-key auth changes the calculus. A thin `/playstat/*` passthrough in the Budgerr backend keeps the playstat key server-side only, collapses two client API configs into one, and removes playstat's CORS dependency. Decide alongside the auth item; if staying direct, both frontends need the playstat key in their env instead.
+- **Encrypted Postgres backups** — nightly `pg_dump -Fc`, encrypt with `age`, copy off-machine (iCloud Drive folder is fine — it's encrypted output, and ~/Documents sync issues don't apply to a copy job). launchd timer + a documented restore drill actually performed once. The other unmet Section 10 non-negotiable.
+- **Deploy** — the Section 11.2 decision: small VPS, or Pi + Tailscale. Move playstat and Budgerr **together** (auto-settle/auto-log assume playstat on the same host). Both stacks are already Docker-friendly (Postgres in compose); add containers for the two APIs, Caddy for TLS if VPS, launchd jobs become cron/systemd timers. Unlocks the phone outside home wifi.
+- **Push notifications** — settlement results ("Parlay hit · +$25"), 80%/100% budget alerts (the `alerts` rows are already created in the budget recompute — they just don't go anywhere), expiring rotating categories, auto-log confirmations. ntfy.sh is the pragmatic single-user route: one `httpx.post` helper in the backend, subscribe on the phone; no APNs/FCM setup. Expo push is the native alternative if the app should own the notification surface.
+- **Plaid webhooks** — replace the daily 7am polling sync with `SYNC_UPDATES_AVAILABLE` webhooks once a public HTTPS URL exists (post-deployment). Keep the daily sync as a fallback sweep.
+- **CI** — GitHub Actions on all three repos: backend pytest, web `npm run build`, mobile `tsc --noEmit`. Sub-hour setup; catches what a dead subagent or interrupted session would otherwise leave broken.
 
 ### 15.3 Tier C — Smarter money analysis
 
-- **Price-hike + annual-subscription detection** — extend `app/recurring.py`: flag trending amount drift within a cluster, add a ~365-day cadence pass.
-- **Sportsbook reconciliation** — match `is_betting` bank transactions against logged bets; surface deposits with no corresponding logged bets (the bet log lying by omission).
-- **Cash-flow forecast** — detect income inflows, project each category's end-of-month position from its run rate ("on pace to overshoot Dining by $40").
-- **Turn on the Claude rate lookup** — Section 7.4 is built; just set `ANTHROPIC_API_KEY`. Pairs with the expiring-rate banner at quarter rollovers.
-- **Card-aware "left on the table"** — map Plaid accounts to credit cards so the retrospective report uses the card actually used per transaction.
+- **Price-hike + annual-subscription detection** — extend `app/recurring.py`: flag a cluster whose amounts trend upward over its lifetime (compare first-third vs last-third means, not just the 10% membership tolerance), and add a second cadence pass for ~365-day gaps (annual renewals — the ones that actually ambush you). Surface hikes as their own dashboard line ("Netflix up $0.23 since January").
+- **Sportsbook reconciliation** — for each month, compare bank-side `is_betting` net outflow against logged-bet activity per sportsbook (deposits imply stakes should exist within a window). Surface unmatched deposits as "money sent to DraftKings with no logged bets" — the bet log lying by omission. Needs merchant→sportsbook normalization (the `is_betting` matcher already knows the merchant names).
+- **Cash-flow forecast** — detect income (large, regular credit inflows via the same cadence machinery as `recurring.py`), project each category's end-of-month position from day-of-month run rate vs. historical same-day pace, and flag "on pace to overshoot Dining by $40 by the 31st." Pure analysis; no schema change.
+- **Turn on the Claude rate lookup** — Section 7.4 is built; just set `ANTHROPIC_API_KEY` in `backend/.env` (the same key also activates `POST /bets/parse-slip`). Pairs with the expiring-rate banner at quarter rollovers: banner fires → one click researches the new categories → confirm saves them.
+- **Card-aware "left on the table"** — `credit_cards.linked_account_id` already exists in the web types; complete the loop so the retrospective report uses the card *actually used* per transaction (via its account) instead of assuming the optimal card was available. Makes the most under-appreciated feature in the app trustworthy.
 
 ### 15.4 Tier D — Quality of life
 
@@ -347,4 +350,20 @@ Everything in Sections 12 and 14 is done. This is the forward plan, grouped into
 
 ### 15.5 Recommended sequence
 
-Auto-log paper bets first (every day without it loses calibration data) → auth + backups (small, overdue) → deploy → push notifications → webhooks + price-hike detection + reconciliation → Kelly sizing trusted only after calibration data validates `model_prob`.
+Finish the 15.6 loose ends first (playstat key wiring is blocking the whole model loop) → auth + backups (small, overdue) → deploy → push notifications → webhooks + price-hike detection + reconciliation → Kelly sizing trusted only after calibration data validates `model_prob`.
+
+### 15.6 State of play & immediate loose ends (as of 2026-07-14)
+
+Snapshot for whoever picks this up next — the working set is three repos (`~/dev/Budgerr` backend, `~/dev/budgerr-web`, `~/dev/BudgerrApp`), all on clean pushed `main`; backend suite is 53 passing tests.
+
+**Blocking — playstat now enforces API-key auth.** playstat added an `X-API-Key` requirement (`api/auth.py` in that repo: `AUTH_ENABLED` + `PLAYSTAT_API_KEYS="name:key,…"` env vars). Until keys are wired, Budgerr's auto-settle/auto-log get empty results (they fail soft, returning zeros) and both frontends' Tonight/edges panels get 401s. To fix:
+  1. Provision a `budgerr` key in playstat's `PLAYSTAT_API_KEYS` (owner does this — never modify playstat from a Budgerr session).
+  2. Set `PLAYSTAT_API_KEY=<that key>` in `backend/.env` and restart the backend — the client (`app/playstat_client.py`) already sends the header when set.
+  3. Frontends: decide the Tier B "proxy playstat through the backend" question. Recommended: add the thin backend passthrough and point both frontends at it (keeps the key server-side, kills the CORS requirement). Quick alternative: `NEXT_PUBLIC_PLAYSTAT_API_KEY` / `EXPO_PUBLIC_PLAYSTAT_API_KEY` attached in `lib/playstat.ts` fetchers.
+
+**Loose ends from the Tier A build** (a session-limit outage killed three subagents mid-flight; completed parts were salvaged and shipped):
+  - Web: screenshot-import UI in `components/bets/BetForm.tsx` — the `api.bets.parseSlip` fetcher and `ParsedSlip` types are already in `lib/api.ts`; add the file input, loading state, and merge-into-form-for-review flow (never auto-submit). 501 → "needs ANTHROPIC_API_KEY".
+  - Mobile: ¼-Kelly line on `components/tonight/ParlayCard.tsx` (port web's `lib/kelly.ts`; Tonight screen already passes budget data for the paper-stake flow) and the screenshot-import flow in `app/modal.tsx` (needs `expo-image-picker`, not yet installed; `ParsedSlip` types already in `lib/api.ts`).
+  - Verify `POST /bets/auto-log-recommendations` end-to-end once the playstat key is set (launchd job `com.budgerr.auto-log-parlays`, daily 9:00am, is already loaded) — it should log that morning's recommendations exactly once, and a second call should report them all in `skipped_existing`.
+
+**Standing environment facts:** backend runs as launchd service `com.budgerr.backend` on port **8001** (playstat is 8000) — restart with `launchctl kickstart -k gui/$(id -u)/com.budgerr.backend`. Other launchd jobs: `plaid-sync` 7:00am, `auto-settle` 8:30am, `auto-log-parlays` 9:00am. Postgres runs in Docker (port 5433); Docker Desktop `AutoStart` was enabled 2026-07-14 but verify after the next reboot. One real pending paper parlay (Rocchio/Gasper, 7/17 games) is in the DB — do not delete it.
