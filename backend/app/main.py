@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.routers import bet_import, bets, budgeting, plaid, rewards
+from app.routers import bet_import, bets, budgeting, plaid, playstat_proxy, rewards
 
 app = FastAPI(title="Budgerr")
 app.add_middleware(
@@ -19,6 +19,7 @@ app.include_router(bets.router)
 app.include_router(budgeting.router)
 app.include_router(rewards.router)
 app.include_router(bet_import.router)
+app.include_router(playstat_proxy.router)
 app.mount("/static", StaticFiles(directory=Path(__file__).parent.parent / "static"), name="static")
 
 
