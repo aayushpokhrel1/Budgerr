@@ -316,8 +316,8 @@ Everything in Sections 12 and 14 is done. This is the forward plan, grouped into
 
 ### 15.1 Tier A — Close the model loop *(in progress)*
 
-- **Auto-log paper bets** *(building)* — `POST /bets/auto-log-recommendations` pulls playstat's `/parlay-recommendations`, enriches legs with line/date from `/edges`, and logs each as a $10 paper bet; `bets.external_ref` (`"playstat-parlay-{id}"`, unique) dedupes across runs. Scheduled via launchd daily at 9:00am, after playstat's ~8:30am optimizer run — calibration data accrues with zero taps.
-- **Bankroll curve & drawdown** *(building)* — `GET /bets/bankroll?scope=real|paper`: cumulative-P/L time series over settled bets plus max drawdown and longest losing streak; charted on both Analytics views.
+- **Auto-log paper bets** — `POST /bets/auto-log-recommendations` pulls playstat's `/parlay-recommendations`, enriches legs with line/date from `/edges`, and logs each as a $10 paper bet; `bets.external_ref` (`"playstat-parlay-{id}"`, unique) dedupes across runs. Scheduled via launchd daily at 9:00am, after playstat's ~8:30am optimizer run — calibration data accrues with zero taps.
+- **Bankroll curve & drawdown** — `GET /bets/bankroll?scope=real|paper`: cumulative-P/L time series over settled bets plus max drawdown and longest losing streak; charted on both Analytics views.
 - **Kelly-style stake sizing** *(building)* — ¼-Kelly suggestion shown on the Tonight parlay cards, computed client-side from `joint_prob` + combined odds against the remaining betting budget. Display-only guidance; treat with suspicion until the calibration view validates the model's probabilities.
 - **Bet-slip screenshot import** *(building)* — `POST /bets/parse-slip` sends a sportsbook screenshot to Claude (vision) and returns structured bet fields to pre-fill the quick-entry form for review; returns 501 until `ANTHROPIC_API_KEY` is set, same pattern as Section 7.4.
 - **Closing-line value (CLV)** *(blocked on playstat)* — compare odds taken vs. the closing line, the sharpest long-term edge signal. Needs playstat to store closing lines first; design it from that side.

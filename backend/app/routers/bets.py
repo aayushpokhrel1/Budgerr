@@ -2,14 +2,18 @@ from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Literal
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session, selectinload
 
 from app.auto_settlement import auto_settle_pending_bets
 from app.bet_analytics import compute_analytics
+from app.bet_auto_log import recommendations_to_bets
+from app.bet_bankroll import compute_bankroll
 from app.deps import get_db
 from app.models import Bet, BetLeg, BetStatus, BetType, Transaction
+from app.playstat_client import get_edges, get_parlay_recommendations
 
 router = APIRouter(prefix="/bets", tags=["bets"])
 
@@ -246,6 +250,69 @@ def bet_analytics(
         .all()
     )
     return BetAnalyticsResponse(**compute_analytics(bets, scope))
+
+
+class AutoLogResponse(BaseModel):
+    logged_bet_ids: list[int]
+    skipped_existing: int
+
+
+@router.post("/auto-log-recommendations", response_model=AutoLogResponse)
+def auto_log_recommendations(db: Session = Depends(get_db)) -> AutoLogResponse:
+    """Logs playstat's current parlay recommendations as paper bets,
+    idempotently (dedup on external_ref). Runs on a schedule, so playstat
+    being unreachable returns zeros instead of a 500.
+    """
+    try:
+        recs = get_parlay_recommendations(limit=10)
+        edges = get_edges()
+    except httpx.HTTPError:
+        return AutoLogResponse(logged_bet_ids=[], skipped_existing=0)
+
+    candidate_bets = recommendations_to_bets(recs, edges)
+
+    logged_bet_ids: list[int] = []
+    skipped_existing = 0
+    for bet in candidate_bets:
+        exists = db.query(Bet).filter(Bet.external_ref == bet.external_ref).one_or_none()
+        if exists is not None:
+            skipped_existing += 1
+            continue
+        db.add(bet)
+        db.flush()
+        logged_bet_ids.append(bet.bet_id)
+
+    db.commit()
+    return AutoLogResponse(logged_bet_ids=logged_bet_ids, skipped_existing=skipped_existing)
+
+
+class BankrollPoint(BaseModel):
+    date: str
+    net: float
+    cumulative: float
+
+
+class BankrollResponse(BaseModel):
+    scope: Literal["real", "paper"]
+    points: list[BankrollPoint]
+    max_drawdown: float
+    longest_losing_streak: int
+
+
+@router.get("/bankroll", response_model=BankrollResponse)
+def bet_bankroll(
+    scope: Literal["real", "paper"] = "real", db: Session = Depends(get_db)
+) -> BankrollResponse:
+    """Cumulative bankroll trend, max drawdown, and longest losing streak
+    over settled bets in the given scope, ordered by settled_at.
+    """
+    bets = (
+        _bet_query(db)
+        .filter(Bet.settled_at.isnot(None), Bet.is_paper.is_(scope == "paper"))
+        .order_by(Bet.settled_at)
+        .all()
+    )
+    return BankrollResponse(**compute_bankroll(bets, scope))
 
 
 @router.get("/{bet_id}", response_model=BetRead)
