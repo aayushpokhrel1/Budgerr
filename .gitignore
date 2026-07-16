@@ -10,3 +10,4 @@ graphify-out/
 backend/plaid-sync.log
 backend/auto-log-parlays.log
 backend/backup.log
+.DS_Store
