@@ -13,6 +13,7 @@ from app.bet_auto_log import recommendations_to_bets
 from app.bet_bankroll import compute_bankroll
 from app.deps import get_db
 from app.models import Bet, BetLeg, BetStatus, BetType, Transaction
+from app.notify import notify
 from app.playstat_client import get_edges, get_parlay_recommendations
 
 router = APIRouter(prefix="/bets", tags=["bets"])
@@ -171,13 +172,42 @@ class AutoSettleResponse(BaseModel):
     settled_bet_ids: list[int]
 
 
+def _notify_settlements(db: Session, settled_ids: list[int]) -> None:
+    """Push a notification for each newly settled REAL (non-paper) bet.
+    Paper bets are excluded — the daily auto-log creates them in bulk and they
+    carry no real-money result worth pinging about.
+    """
+    if not settled_ids:
+        return
+    bets = (
+        db.query(Bet)
+        .filter(Bet.bet_id.in_(settled_ids), Bet.is_paper.is_(False))
+        .all()
+    )
+    tag_by_status = {
+        BetStatus.won: "tada",
+        BetStatus.lost: "disappointed",
+        BetStatus.push: "neutral_face",
+    }
+    for bet in bets:
+        net = float(bet.net_result or 0.0)
+        sign = "+" if net >= 0 else "-"
+        notify(
+            f"{bet.sportsbook} {bet.bet_type.value} · {sign}${abs(net):.2f}",
+            title=f"Bet {bet.status.value}",
+            tags=tag_by_status.get(bet.status, ""),
+        )
+
+
 @router.post("/auto-settle", response_model=AutoSettleResponse)
 def auto_settle(db: Session = Depends(get_db)) -> AutoSettleResponse:
     """Cross-references pending bets against playstat's finalized box scores
     and settles whatever can be resolved. Safe to call repeatedly (e.g. on a
     daily schedule) — unresolvable bets are simply left pending.
     """
-    return AutoSettleResponse(settled_bet_ids=auto_settle_pending_bets(db))
+    settled_ids = auto_settle_pending_bets(db)
+    _notify_settlements(db, settled_ids)
+    return AutoSettleResponse(settled_bet_ids=settled_ids)
 
 
 class GroupStats(BaseModel):
@@ -283,6 +313,13 @@ def auto_log_recommendations(db: Session = Depends(get_db)) -> AutoLogResponse:
         logged_bet_ids.append(bet.bet_id)
 
     db.commit()
+    if logged_bet_ids:
+        count = len(logged_bet_ids)
+        notify(
+            f"Logged {count} model parlay{'s' if count != 1 else ''} as paper bets.",
+            title="Auto-log",
+            tags="robot",
+        )
     return AutoLogResponse(logged_bet_ids=logged_bet_ids, skipped_existing=skipped_existing)
 
 

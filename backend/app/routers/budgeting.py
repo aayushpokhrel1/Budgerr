@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_db
 from app.models import Alert, BudgetPeriod, Category, Transaction
+from app.notify import notify
 
 router = APIRouter(tags=["budgeting"])
 
@@ -189,6 +190,10 @@ def recompute_budget_periods_for_month(db: Session, month: date) -> RecomputeRes
                 alerts_fired.append(alert)
 
     db.commit()
+    # alerts_fired holds only newly-created alerts (existing ones are skipped
+    # above), so this pushes each threshold crossing exactly once.
+    for alert in alerts_fired:
+        notify(alert.message, title="Budget alert", tags="warning")
     for period in periods:
         db.refresh(period)
     for alert in alerts_fired:

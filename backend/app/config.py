@@ -19,6 +19,11 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
 
+    # Push notifications via ntfy. Empty NTFY_TOPIC disables them entirely.
+    # ntfy.sh topics are public, so use a hard-to-guess topic name.
+    ntfy_base_url: str = "https://ntfy.sh"
+    ntfy_topic: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
