@@ -17,7 +17,10 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install ".[dev]"
+        # Editable install so `app` runs from the checkout — app.main mounts
+        # StaticFiles from ../static (relative to the package), which only
+        # exists in the source tree, not in a copied site-packages install.
+        run: pip install -e ".[dev]"
       - name: Run tests
         # The suite is DB-independent (no live Postgres needed) and auth
         # defaults off with no .env present, so this runs as-is.
