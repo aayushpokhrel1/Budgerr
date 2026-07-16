@@ -348,6 +348,10 @@ class RecurringChargeRead(BaseModel):
     median_interval_days: float
     active: bool
     monthly_estimate: float
+    cadence: str
+    price_hiked: bool
+    price_hike_amount: float | None
+    price_hike_pct: float | None
 
 
 class RecurringChargesResponse(BaseModel):
@@ -358,9 +362,12 @@ class RecurringChargesResponse(BaseModel):
 @router.get("/recurring-charges", response_model=RecurringChargesResponse)
 def recurring_charges(db: Session = Depends(get_db)) -> RecurringChargesResponse:
     """Detects subscription-like recurring charges by clustering transactions
-    per merchant by amount, then checking for >=3 occurrences with a roughly
-    monthly (20-40 day median) gap between them. See app/recurring.py for the
-    pure detection logic.
+    per merchant by amount, then checking for either a roughly monthly
+    (20-40 day median, >=3 occurrences) or roughly annual (~365 +/- 30 day
+    median, >=2 occurrences) cadence between them. Each cluster is also
+    checked for a price hike (first-third vs last-third mean amount trending
+    up past the clustering tolerance). See app/recurring.py for the pure
+    detection logic.
     """
     transactions = db.query(Transaction).all()
     clusters = detect_recurring_charges(transactions)
@@ -379,6 +386,10 @@ def recurring_charges(db: Session = Depends(get_db)) -> RecurringChargesResponse
                 median_interval_days=c.median_interval_days,
                 active=c.active,
                 monthly_estimate=c.monthly_estimate,
+                cadence=c.cadence,
+                price_hiked=c.price_hiked,
+                price_hike_amount=c.price_hike_amount,
+                price_hike_pct=c.price_hike_pct,
             )
             for c in clusters
         ],

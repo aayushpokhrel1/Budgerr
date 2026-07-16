@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+import pytest
+
 from app.recurring import detect_recurring_charges
 
 
@@ -122,3 +124,106 @@ def test_monthly_total_sums_only_active():
 
     monthly_total = round(sum(c.monthly_estimate for c in clusters if c.active), 2)
     assert monthly_total == 10.0
+
+
+def test_monthly_cluster_tagged_with_monthly_cadence():
+    dates = _monthly_dates(date(2026, 1, 15), 6)
+    txns = [FakeTxn(amount=15.99, merchant_name="Netflix", date=d) for d in dates]
+
+    clusters = detect_recurring_charges(txns, today=dates[-1])
+
+    assert len(clusters) == 1
+    assert clusters[0].cadence == "monthly"
+
+
+def test_rising_amounts_flagged_with_delta_and_pct():
+    dates = _monthly_dates(date(2026, 1, 15), 6)
+    # First third (2 pts) avg 15.99, last third (2 pts) avg 17.99 -> +2.00 / +12.5%.
+    amounts = [15.99, 15.99, 16.99, 16.99, 17.99, 17.99]
+    txns = [FakeTxn(amount=a, merchant_name="Netflix", date=d) for a, d in zip(amounts, dates)]
+
+    clusters = detect_recurring_charges(txns, today=dates[-1])
+
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c.price_hiked is True
+    assert c.price_hike_amount == 2.0
+    assert c.price_hike_pct == pytest.approx(12.5, abs=0.1)
+
+
+def test_stable_cluster_not_flagged_as_price_hike():
+    dates = _monthly_dates(date(2026, 1, 15), 6)
+    amounts = [15.99, 16.20, 15.80, 16.00, 15.99, 16.10]  # flat, within cluster tolerance
+    txns = [FakeTxn(amount=a, merchant_name="Hulu", date=d) for a, d in zip(amounts, dates)]
+
+    clusters = detect_recurring_charges(txns, today=dates[-1])
+
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c.price_hiked is False
+    assert c.price_hike_amount is None
+    assert c.price_hike_pct is None
+
+
+def test_detects_annual_subscription_and_tags_cadence():
+    base = date(2023, 6, 1)
+    dates = [base, base + timedelta(days=365), base + timedelta(days=730)]
+    txns = [FakeTxn(amount=99.0, merchant_name="Amazon Prime", date=d) for d in dates]
+
+    clusters = detect_recurring_charges(txns, today=dates[-1])
+
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c.cadence == "annual"
+    assert c.occurrences == 3
+    assert 335 <= c.median_interval_days <= 395
+
+
+def test_annual_and_monthly_cadences_are_mutually_exclusive():
+    # Monthly series must not be misclassified as annual.
+    monthly_dates = _monthly_dates(date(2026, 1, 15), 6)
+    monthly_txns = [FakeTxn(amount=15.99, merchant_name="Netflix", date=d) for d in monthly_dates]
+
+    # Annual series must not be misclassified as monthly.
+    annual_dates = [date(2023, 6, 1), date(2024, 6, 1), date(2025, 6, 1)]
+    annual_txns = [FakeTxn(amount=99.0, merchant_name="Amazon Prime", date=d) for d in annual_dates]
+
+    clusters = detect_recurring_charges(monthly_txns + annual_txns, today=annual_dates[-1])
+
+    by_name = {c.merchant_name: c for c in clusters}
+    assert by_name["Netflix"].cadence == "monthly"
+    assert by_name["Amazon Prime"].cadence == "annual"
+
+
+def test_two_occurrence_annual_series_detected():
+    dates = [date(2024, 3, 1), date(2025, 3, 3)]  # ~367 days apart
+    txns = [FakeTxn(amount=139.0, merchant_name="Costco Membership", date=d) for d in dates]
+
+    clusters = detect_recurring_charges(txns, today=dates[-1])
+
+    assert len(clusters) == 1
+    assert clusters[0].cadence == "annual"
+    assert clusters[0].occurrences == 2
+
+
+def test_too_few_points_for_thirds_not_crash_not_flagged():
+    # Two occurrences: annual cadence detected, but too few points to split
+    # into meaningful thirds for the price-hike check.
+    dates = [date(2024, 1, 1), date(2025, 1, 2)]
+    txns = [FakeTxn(amount=50.0, merchant_name="Domain Renewal", date=d) for d in dates]
+
+    clusters = detect_recurring_charges(txns, today=dates[-1])
+
+    assert len(clusters) == 1
+    c = clusters[0]
+    assert c.price_hiked is False
+    assert c.price_hike_amount is None
+    assert c.price_hike_pct is None
+
+
+def test_single_occurrence_does_not_crash_and_is_not_flagged():
+    txns = [FakeTxn(amount=50.0, merchant_name="One Timer", date=date(2026, 1, 1))]
+
+    clusters = detect_recurring_charges(txns, today=date(2026, 1, 1))
+
+    assert clusters == []
