@@ -32,7 +32,7 @@ services:
       DATABASE_URL: postgresql+psycopg://budgerr:budgerr@budgerr-db:5432/budgerr
       PLAYSTAT_BASE_URL: http://playstat-api:8000
     ports:
-      - "8001:8001"   # host-published so Tailscale Funnel can wrap it at deploy time
+      - "127.0.0.1:8001:8001"   # loopback only: Funnel/serve + systemd cron proxy from localhost; never exposed on the LAN
 
   playstat-db:
     image: postgres:16-alpine
@@ -63,7 +63,8 @@ services:
       playstat-db:
         condition: service_healthy
     env_file:
-      - ../../playstat/.env
+      - path: ../../playstat/.env
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg2://playstat:playstat@playstat-db:5432/playstat
     # playstat's /health is auth-exempt by design (api/auth.py PUBLIC_PATHS), so

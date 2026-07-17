@@ -27,7 +27,7 @@ DB_USER="budgerr"
 DB_NAME="budgerr"
 RECIPIENTS="${BUDGERR_AGE_RECIPIENTS:-$HOME/.config/budgerr/backup-age.pub}"
 LOCAL_DEST="${BUDGERR_BACKUP_DIR:-$HOME/Budgerr-Backups}"
-ICLOUD_DEST="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Budgerr-Backups"
+ICLOUD_DEST="${BUDGERR_ICLOUD_DEST:-$HOME/Library/Mobile Documents/com~apple~CloudDocs/Budgerr-Backups}"
 KEEP=14
 
 if [ ! -f "$RECIPIENTS" ]; then
@@ -63,7 +63,9 @@ ls -t "$LOCAL_DEST"/budgerr-*.dump.age 2>/dev/null | tail -n +$((KEEP + 1)) | wh
 done
 
 # Off-machine copy to iCloud (create-only; best-effort — see header note).
-if mkdir -p "$ICLOUD_DEST" 2>/dev/null && cp "$out" "$ICLOUD_DEST/$name" 2>/dev/null; then
+if [ -z "$ICLOUD_DEST" ]; then
+  echo "$(date): iCloud off-machine copy disabled (BUDGERR_ICLOUD_DEST empty)"
+elif mkdir -p "$ICLOUD_DEST" 2>/dev/null && cp "$out" "$ICLOUD_DEST/$name" 2>/dev/null; then
   echo "$(date): off-machine copy OK -> $ICLOUD_DEST/$name"
   # Opportunistic retention (unlink may EPERM under launchd without FDA; ignore).
   ls -t "$ICLOUD_DEST"/budgerr-*.dump.age 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r f; do

@@ -83,6 +83,20 @@ curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 ```
 
+Set the box's timezone so the systemd timers (03:00 / 07:00 / 09:15 / 09:45,
+§8) fire at the intended local time — Ubuntu Server defaults to UTC:
+
+```bash
+sudo timedatectl set-timezone <your-timezone>   # e.g. America/New_York
+```
+
+Ensure Docker starts on boot so the timer-driven jobs (which curl the
+container or run `docker exec`, §8) find the daemon already up:
+
+```bash
+sudo systemctl enable --now docker
+```
+
 Confirm Docker works without `sudo` and that `docker compose version` shows
 the v2 plugin (not the standalone `docker-compose` v1 binary) before
 continuing.
@@ -140,7 +154,9 @@ annotations):
 | `NTFY_TOPIC` / `ANTHROPIC_API_KEY` | Optional; carry over from the Mac if used. |
 
 **`playstat/.env`** (owned by the playstat session; listed here only so you
-know it must exist before `docker compose up`):
+know it must exist before starting `playstat-api`. Its `env_file` is
+optional in compose, so the budgerr-only fallback in §6 — `docker compose up
+-d budgerr-db budgerr-api` — works even if this file doesn't exist yet):
 
 | Var | Notes |
 |---|---|

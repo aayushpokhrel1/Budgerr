@@ -1,7 +1,7 @@
 [Unit]
 Description=Budgerr auto-log parlay recommendations
 Wants=network-online.target
-After=network-online.target playstat-mlb.service
+After=network-online.target playstat-mlb.service docker.service
 
 [Service]
 Type=oneshot
