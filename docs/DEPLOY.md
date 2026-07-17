@@ -153,22 +153,26 @@ know it must exist before `docker compose up`):
 
 ## 6. Build & start
 
+If playstat's Dockerfile is already present in `~/dev/playstat`, build and
+start the full stack:
+
 ```bash
 cd ~/dev/Budgerr/deploy
 docker compose build
 docker compose up -d
 ```
 
-If playstat's Dockerfile isn't present yet in `~/dev/playstat` (coordinate
-timing with the playstat session — see §10), bring up only the Budgerr side
-first:
+If it isn't present yet (coordinate timing with the playstat session — see
+§10), scope both commands to the Budgerr side only:
 
 ```bash
+docker compose build budgerr-api
 docker compose up -d budgerr-db budgerr-api
 ```
 
-and add `playstat-db playstat-api` once their Dockerfile lands. Check status
-with `docker compose ps` — both `budgerr-db` and `playstat-db` should show
+and run `docker compose build playstat-api && docker compose up -d
+playstat-db playstat-api` once their Dockerfile lands. Check status with
+`docker compose ps` — both `budgerr-db` and `playstat-db` should show
 `healthy` before their API containers report `Up` (compose gates on
 `condition: service_healthy`).
 
@@ -200,9 +204,11 @@ disaster recovery" procedure, but target the box's container name):
 ```bash
 # Copy the latest backup + the age private key to the box first, then:
 age -d -i ~/.config/budgerr/backup-age.key <backup>.dump.age > /tmp/budgerr-restore.dump
+docker compose stop budgerr-api   # nothing may hold a connection during the drop/restore
 docker exec budgerr-stack-budgerr-db-1 psql -U budgerr -d postgres -c "DROP DATABASE IF EXISTS budgerr;"
 docker exec budgerr-stack-budgerr-db-1 psql -U budgerr -d postgres -c "CREATE DATABASE budgerr;"
 docker exec -i budgerr-stack-budgerr-db-1 pg_restore -U budgerr -d budgerr < /tmp/budgerr-restore.dump
+docker compose start budgerr-api
 rm -f /tmp/budgerr-restore.dump
 ```
 
@@ -234,7 +240,9 @@ directly. Broad shape:
 # On the source (wherever playstat currently runs):
 docker exec <playstat-source-container> pg_dump -U playstat -Fc playstat > playstat.dump
 # Copy playstat.dump to the box, then:
-docker exec -i playstat-stack-playstat-db-1 pg_restore -U playstat -d playstat < playstat.dump
+docker compose stop playstat-api   # nothing may hold a connection during the restore
+docker exec -i budgerr-stack-playstat-db-1 pg_restore -U playstat -d playstat < playstat.dump
+docker compose start playstat-api
 ```
 
 **Coordinate timing around playstat migration `005`, merging ~2026-07-18.
