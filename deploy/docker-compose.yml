@@ -1,0 +1,72 @@
+name: budgerr-stack
+
+services:
+  budgerr-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: budgerr
+      POSTGRES_PASSWORD: budgerr
+      POSTGRES_DB: budgerr
+    volumes:
+      - budgerr_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budgerr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  budgerr-api:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    depends_on:
+      budgerr-db:
+        condition: service_healthy
+    # Secrets (BUDGERR_API_KEYS, AUTH_ENABLED, PLAID_*, PLAYSTAT_API_KEY,
+    # NTFY_*, ANTHROPIC_API_KEY) come from backend/.env. The two overrides
+    # below repoint the connection URLs at the compose network.
+    env_file:
+      - ../backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://budgerr:budgerr@budgerr-db:5432/budgerr
+      PLAYSTAT_BASE_URL: http://playstat-api:8000
+    ports:
+      - "8001:8001"   # host-published so Tailscale Funnel can wrap it at deploy time
+
+  playstat-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: playstat
+      POSTGRES_PASSWORD: playstat
+      POSTGRES_DB: playstat
+    volumes:
+      - playstat_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U playstat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  playstat-api:
+    # playstat authors this Dockerfile in the playstat repo (../playstat).
+    # Budgerr never writes into that repo. Until it exists, bring the stack up
+    # with the Budgerr services only:
+    #   docker compose up -d budgerr-db budgerr-api
+    build:
+      context: ../playstat
+    restart: unless-stopped
+    depends_on:
+      playstat-db:
+        condition: service_healthy
+    env_file:
+      - ../playstat/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://playstat:playstat@playstat-db:5432/playstat
+    # No `ports:` — playstat is internal-only. Budgerr's proxy reaches it at
+    # http://playstat-api:8000 over the compose network. Never exposed publicly.
+
+volumes:
+  budgerr_pgdata:
+  playstat_pgdata:
