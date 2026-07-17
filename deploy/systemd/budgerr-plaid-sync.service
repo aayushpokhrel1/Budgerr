@@ -1,0 +1,9 @@
+[Unit]
+Description=Budgerr Plaid sync
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/budgerr/cron.env
+ExecStart=/usr/bin/curl -fsS -X POST -H "X-API-Key: ${BUDGERR_CRON_KEY}" http://127.0.0.1:8001/plaid/sync-all

@@ -1,0 +1,10 @@
+[Unit]
+Description=Budgerr encrypted Postgres backup
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# BUDGERR_HOME points at the repo checkout on the box (set in the env file).
+EnvironmentFile=/etc/budgerr/cron.env
+ExecStart=/bin/bash ${BUDGERR_HOME}/backend/ops/backup.sh
