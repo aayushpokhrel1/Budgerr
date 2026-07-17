@@ -22,11 +22,11 @@ set -euo pipefail
 # launchd runs with a minimal PATH; docker and age live in /usr/local/bin.
 export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 
-CONTAINER="budgerr-postgres-1"
+CONTAINER="${BUDGERR_DB_CONTAINER:-budgerr-postgres-1}"
 DB_USER="budgerr"
 DB_NAME="budgerr"
-RECIPIENTS="$HOME/.config/budgerr/backup-age.pub"
-LOCAL_DEST="$HOME/Budgerr-Backups"
+RECIPIENTS="${BUDGERR_AGE_RECIPIENTS:-$HOME/.config/budgerr/backup-age.pub}"
+LOCAL_DEST="${BUDGERR_BACKUP_DIR:-$HOME/Budgerr-Backups}"
 ICLOUD_DEST="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Budgerr-Backups"
 KEEP=14
 
@@ -47,14 +47,14 @@ docker exec "$CONTAINER" pg_dump -U "$DB_USER" -Fc "$DB_NAME" \
   | age -R "$RECIPIENTS" -o "$tmp"
 
 # Sanity check: a real encrypted custom-format dump is comfortably >1KB.
-if [ ! -s "$tmp" ] || [ "$(stat -f%z "$tmp")" -lt 1000 ]; then
+if [ ! -s "$tmp" ] || [ "$(wc -c < "$tmp")" -lt 1000 ]; then
   echo "$(date): backup FAILED — output too small, aborting" >&2
   exit 1
 fi
 
 mv "$tmp" "$out"
 trap - EXIT
-echo "$(date): local backup OK -> $out ($(stat -f%z "$out") bytes)"
+echo "$(date): local backup OK -> $out ($(wc -c < "$out") bytes)"
 
 # Local retention: keep the newest $KEEP, delete older. Only after a successful
 # write, so a failed run never prunes good backups.

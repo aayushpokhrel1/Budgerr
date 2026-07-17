@@ -10,6 +10,15 @@ Create `/etc/budgerr/cron.env` (mode 600, root-owned):
 
     BUDGERR_CRON_KEY=<the cron key from BUDGERR_API_KEYS>
     BUDGERR_HOME=/home/<user>/dev/Budgerr
+    BUDGERR_DB_CONTAINER=budgerr-stack-budgerr-db-1
+    BUDGERR_AGE_RECIPIENTS=/etc/budgerr/backup-age.pub
+    BUDGERR_BACKUP_DIR=/var/backups/budgerr
+
+These three overrides exist because `backup.sh` defaults to the macOS/launchd
+values so the Mac's authoritative 03:00 backup keeps working unchanged until
+cutover; the box supplies its own values via the unit's `EnvironmentFile`. Note
+that the age **private** key must also be present on the box for restores (per
+`backend/ops/restore.md`) and is deliberately not stored alongside the backups.
 
 ## playstat ordering (coordinate with the playstat session)
 
