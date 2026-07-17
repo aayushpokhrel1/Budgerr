@@ -136,7 +136,7 @@ None of these values are committed; fill them in on the box only.
 cd ~/dev/Budgerr
 cp backend/.env.example backend/.env
 cd ~/dev/playstat
-cp .env.example .env   # or however playstat documents its own example
+cp .env.example .env   # playstat ships a .env.example (confirmed 2026-07-17)
 ```
 
 **`backend/.env`** (see `deploy/.env.example` for the compose-specific
@@ -250,16 +250,25 @@ retry; nothing on the Mac is at risk.
 
 playstat's own `pg_dump`/`pg_restore` process, coordinated with the playstat
 session — this is their schema and their data, Budgerr does not touch it
-directly. Broad shape:
+directly. Commands below are the playstat architect's authoritative form
+(confirmed 2026-07-17): the source DB is PostgreSQL **14.22** (~702 MB) and
+the box's `playstat-db` is `postgres:16-alpine`, so this is a supported
+**forward 14→16 restore**. Dump with `--no-owner --no-acl` and restore with
+`--role=playstat` so it lands cleanly under the `playstat` role regardless of
+the source's ownership:
 
 ```bash
 # On the source (wherever playstat currently runs):
-docker exec <playstat-source-container> pg_dump -U playstat -Fc playstat > playstat.dump
-# Copy playstat.dump to the box, then:
+pg_dump -Fc --no-owner --no-acl -d playstat -f playstat.dump
+# Copy playstat.dump to the box, then restore into the fresh playstat-db:
 docker compose stop playstat-api   # nothing may hold a connection during the restore
-docker exec -i budgerr-stack-playstat-db-1 pg_restore -U playstat -d playstat < playstat.dump
+docker exec -i budgerr-stack-playstat-db-1 pg_restore --no-owner --role=playstat -d playstat < playstat.dump
 docker compose start playstat-api
 ```
+
+(If playstat's source runs in a container, wrap the `pg_dump` in
+`docker exec <playstat-source-container> …` and `docker cp` the file out —
+the flags are what matter.)
 
 **Coordinate timing around playstat migration `005`, merging ~2026-07-18.
 Do not snapshot playstat's schema before it lands** — a dump taken before
