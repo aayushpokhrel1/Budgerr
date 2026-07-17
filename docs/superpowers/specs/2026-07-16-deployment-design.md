@@ -38,13 +38,13 @@ A new `deploy/docker-compose.yml` (kept separate from the dev-only root `docker-
 |---|---|---|---|
 | `budgerr-db` | `postgres:16-alpine` | internal only | volume `budgerr_pgdata`, db `budgerr` |
 | `playstat-db` | `postgres:16-alpine` | internal only | volume `playstat_pgdata`, db `playstat` (~701 MB) |
-| `budgerr-api` | build `backend/Dockerfile` (context = repo root) | **public via Funnel** | `uvicorn app.main:app --host 0.0.0.0 --port 8001` |
+| `budgerr-api` | build `backend/Dockerfile` (context = `backend/`) | **public via Funnel** | `uvicorn app.main:app --host 0.0.0.0 --port 8001` |
 | `playstat-api` | build from playstat's own Dockerfile (**they author**) | internal only | `uvicorn api.main:app --host 0.0.0.0 --port 8000` |
 | `playstat-dashboard` | playstat `web/` `next start` :3000 | *(optional, compose profile, off by default)* | playstat's own dashboard, only if wanted remotely |
 
 **Two separate Postgres services**, not one shared instance: respects playstat's ownership boundary (its own schema/dump/restore), keeps backups independent, and 8 GB easily absorbs two small Postgres containers.
 
-**Cross-repo layout on the box:** `~/dev/Budgerr` and `~/dev/playstat` sit side by side; the compose file references playstat via a relative build context (`../playstat`). `DEPLOY.md` documents the required directory layout. **Budgerr never writes into the playstat repo.**
+**Cross-repo layout on the box:** `~/dev/Budgerr` and `~/dev/playstat` sit side by side; the compose file references playstat via a relative build context (`../../playstat`). `DEPLOY.md` documents the required directory layout. **Budgerr never writes into the playstat repo.**
 
 ## 4. Networking & exposure
 

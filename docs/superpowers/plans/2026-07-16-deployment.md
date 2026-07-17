@@ -312,7 +312,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - Create: `deploy/.env.example`
 
 **Interfaces:**
-- Consumes: `backend/Dockerfile` (Task 2), `../playstat` (playstat's own Dockerfile, authored on their side).
+- Consumes: `backend/Dockerfile` (Task 2), `../../playstat` (playstat's own Dockerfile, authored on their side).
 - Produces: services `budgerr-db`, `budgerr-api` (host `:8001`), `playstat-db`, `playstat-api` (internal only). Budgerr reaches playstat at `http://playstat-api:8000`.
 
 - [ ] **Step 1: Create `deploy/docker-compose.yml`:**
@@ -370,18 +370,18 @@ services:
       retries: 5
 
   playstat-api:
-    # playstat authors this Dockerfile in the playstat repo (../playstat).
+    # playstat authors this Dockerfile in the playstat repo (../../playstat).
     # Budgerr never writes into that repo. Until it exists, bring the stack up
     # with the Budgerr services only:
     #   docker compose up -d budgerr-db budgerr-api
     build:
-      context: ../playstat
+      context: ../../playstat
     restart: unless-stopped
     depends_on:
       playstat-db:
         condition: service_healthy
     env_file:
-      - ../playstat/.env
+      - ../../playstat/.env
     environment:
       DATABASE_URL: postgresql+psycopg2://playstat:playstat@playstat-db:5432/playstat
     # No `ports:` — playstat is internal-only. Budgerr's proxy reaches it at
@@ -396,7 +396,7 @@ volumes:
 
 ```bash
 # deploy/.env.example — reference for what each service's env must contain.
-# The compose file loads real values from ../backend/.env and ../playstat/.env.
+# The compose file loads real values from ../backend/.env and ../../playstat/.env.
 # Do NOT put secrets in this file.
 
 # ---- budgerr-api (from backend/.env) ----
@@ -636,7 +636,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 1. **Scope & gate.** State: deployment is owner-gated; this doc is the runbook, run only when the owner green-lights. Both APIs move together.
 2. **Choose the box.** Pi 5 8GB ARM64 vs old laptop x86_64 table (from the spec §2), including the **Pi retrain caveat** (playstat's daily XGBoost retrain on ~1M rows is materially slower on the Pi).
 3. **OS prep.** Ubuntu Server 24.04 (laptop) or Raspberry Pi OS 64-bit (Pi): create user, `apt update`, install Docker Engine + compose plugin (`curl -fsSL https://get.docker.com | sh`, `usermod -aG docker $USER`), install Tailscale (`curl -fsSL https://tailscale.com/install.sh | sh`).
-4. **Get the repos.** Clone `Budgerr` and `playstat` side-by-side under `~/dev/`. Note the compose expects `../backend`, `../playstat` relative to `deploy/`.
+4. **Get the repos.** Clone `Budgerr` and `playstat` side-by-side under `~/dev/`. Note the compose expects `../backend`, `../../playstat` relative to `deploy/`.
 5. **Secrets.** Create `backend/.env` and `playstat/.env` from their examples (list every var from `deploy/.env.example`). Emphasize: use long random `BUDGERR_API_KEYS`; the `cron` key also goes in `/etc/budgerr/cron.env`.
 6. **Build & start.** `cd Budgerr/deploy && docker compose build && docker compose up -d`. Note the playstat service needs playstat's Dockerfile present first (coordinate; until then `up -d budgerr-db budgerr-api`).
 7. **Database migration** (both, with verification + rollback):
