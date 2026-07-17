@@ -41,6 +41,10 @@ def _parse_keys(raw: str) -> dict[str, str]:
 
 API_KEYS = _parse_keys(os.environ.get("BUDGERR_API_KEYS", ""))
 
+# Paths served without auth so orchestration (Docker/Compose healthchecks,
+# systemd) can probe liveness. Leaks only {"status": "ok"}.
+AUTH_EXEMPT_PATHS = frozenset({"/health"})
+
 
 def require_api_key(request: Request) -> None:
     """Global FastAPI dependency: reject requests without a valid X-API-Key.
@@ -48,6 +52,8 @@ def require_api_key(request: Request) -> None:
     No-op when AUTH_ENABLED is false. Never includes the presented key (or
     any configured key) in errors or logs.
     """
+    if request.url.path in AUTH_EXEMPT_PATHS:
+        return
     if not AUTH_ENABLED:
         return
     presented = request.headers.get("X-API-Key", "")
