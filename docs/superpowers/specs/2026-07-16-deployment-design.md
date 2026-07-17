@@ -85,9 +85,10 @@ All four Budgerr launchd jobs plus playstat's daily chain become systemd `.timer
 ## 8. `backend/Dockerfile` shape (Budgerr, authored here)
 
 - Base `python:3.12-slim` (multi-arch; Budgerr requires ≥3.11). No build toolchain needed — `psycopg[binary]` ships wheels.
-- Build context = **repo root** so both `backend/` and repo-root `static/` are available. Image layout mirrors the source: `/app/backend` (workdir) + `/app/static`, so `app.main`'s `../static` mount resolves.
-- Install via `pip install ./backend` (from `pyproject.toml`), non-root user, `CMD ["uvicorn","app.main:app","--host","0.0.0.0","--port","8001"]`.
-- `.dockerignore` excludes `.venv`, `.git`, logs, `graphify-out`, node_modules.
+- Build context = **`backend/`** — the whole app is self-contained there (`app/`, `static/` at `backend/static`, `pyproject.toml`). Copy the context to `/app`, workdir `/app`; `app.main`'s mount `Path(__file__).parent.parent / "static"` then resolves to `/app/static`.
+- Install with **`pip install -e .`** (editable): a normal wheel install puts `app` in site-packages *without* `static/` alongside it, breaking the `__file__`-relative mount — the exact reason CI uses `-e`. Editable keeps the source (and `static/`) in place at `/app`.
+- Non-root user, `CMD ["uvicorn","app.main:app","--host","0.0.0.0","--port","8001"]`.
+- `backend/.dockerignore` excludes `.venv`, `.git`, `*.log`, `__pycache__`, `.pytest_cache`, `graphify-out`.
 
 ## 9. Tailscale
 
