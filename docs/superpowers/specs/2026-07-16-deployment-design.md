@@ -58,7 +58,7 @@ A new `deploy/docker-compose.yml` (kept separate from the dev-only root `docker-
 
 Today Budgerr's `/health` is behind the global `require_api_key` dependency (returns 401 without a key), which makes a clean container healthcheck awkward. Change: exempt `/health` from the guard so orchestration can probe it unauthenticated (it leaks only `{"status":"ok"}`). This mirrors the auth-exempt `/health` playstat is adding on their side.
 
-- **Compose healthchecks:** `budgerr-api` → `GET /health` expects 200; `playstat-api` → `GET /health` expects 200 (playstat is adding it; **fallback** until then: assert an unauthenticated request returns 401, e.g. `curl -s -o /dev/null -w '%{http_code}' localhost:8000/edges | grep -q 401`, which proves the process is up and auth-enforcing).
+- **Compose healthchecks:** `budgerr-api` → `GET /health` expects 200 (via the image's own `HEALTHCHECK`, stdlib probe since `-slim` lacks curl). `playstat-api` → `curl -fsS http://localhost:8000/health` expects 200 — **delivered by playstat as of 82de4db**: auth-exempt via their `api/auth.py` `PUBLIC_PATHS`, returns `{"status":"ok","database":"ok"}` and **503 when Postgres is unreachable** (a real DB check, not just liveness), and their image installs `curl` for exactly this. The earlier "assert 401 on `/edges`" fallback is obsolete and has been dropped.
 - `depends_on: condition: service_healthy` gates each API on its DB.
 
 ## 6. Scheduled jobs — launchd → systemd timers
@@ -99,7 +99,11 @@ All four Budgerr launchd jobs plus playstat's daily chain become systemd `.timer
 
 ## 10. Cross-session coordination & dependencies
 
-- **playstat authors** (at their own deploy green-light, not by us): their `Dockerfile`, the auth-exempt `/health`, and the exact `mlb` job chain. Their answers (2026-07-16): `python:3.11-slim`, `uvicorn api.main:app :8000`, own Postgres 14+ (16 fine), env `DATABASE_URL` / `PLAYSTAT_API_KEYS` / `AUTH_ENABLED` / `API_BASKETBALL_KEY` / `ODDS_API_KEY` (+ dashboard vars if `web/` deploys).
+- **playstat has now DELIVERED (2026-07-17, playstat commit `82de4db`)** — authored on their side, never by us: their `Dockerfile` (build-verified: `python:3.11-slim`, **installs `libgomp1`** because xgboost links OpenMP at runtime and slim omits it — without it the image builds then dies at `import xgboost`; plus `curl` for the healthcheck; 591 MB amd64; `.dockerignore` excludes `.env`/`web/`/`.venv`), the auth-exempt `/health`, and the `mlb` chain definition. Serve: `uvicorn api.main:app --host 0.0.0.0 --port 8000`. Own Postgres **14.22** (target 14+; our `postgres:16-alpine` is acceptable), env `DATABASE_URL` / `PLAYSTAT_API_KEYS` / `AUTH_ENABLED` / `API_BASKETBALL_KEY` (required at import — process won't start without it) / `ODDS_API_KEY` / optional `CORS_ORIGINS`.
+- **One image, two uses:** the same playstat image serves the API (default CMD) *and* runs the daily batch chain as different commands (`python -m modeling.clv`, `python -m optimizer.parlay --target-payout 2.0 --max-legs 3`, …). The batch modules are deliberately in the image — do not strip them as "API-only deadweight". Task 4's `playstat-mlb` unit invokes them via `docker compose run --rm playstat-api <cmd>`.
+- **arm64 is expected-good but NOT proven** — playstat build-verified only `linux/amd64`. All needed wheels (xgboost, scipy, numpy, psycopg2-binary) publish arm64, but if the Pi is chosen, do a `--platform linux/arm64` build **early** rather than discovering a gap at deploy. DEPLOY.md must say this.
+- **The playstat dashboard (`web/`, Next.js :3000) is NOT in our compose** (deliberately out of scope). If it is ever wanted on the box it is a separate service needing its own `PLAYSTAT_API_KEY` / `DASHBOARD_USER` / `DASHBOARD_PASSWORD_HASH` / `SESSION_SECRET`; tell the playstat session if that changes.
+- **playstat's preferred deploy timing** (their call, owner-gated): after their pending merges land and the chain runs clean with them, and after the paper-trading ledger has a few days of real settled results (~2026-07-18+), so what moves is measured rather than hoped-for. Nothing blocks authoring the compose now.
 - **Timing:** playstat migration `005` merges ~2026-07-18.
 - **Review gate:** the playstat architect reviews the `playstat-*` service blocks against the real running system before anything goes live.
 

@@ -50,10 +50,12 @@ services:
       retries: 5
 
   playstat-api:
-    # playstat authors this Dockerfile in the playstat repo (../../playstat).
-    # Budgerr never writes into that repo. Until it exists, bring the stack up
-    # with the Budgerr services only:
-    #   docker compose up -d budgerr-db budgerr-api
+    # Dockerfile is authored and owned by the playstat repo (../../playstat),
+    # which Budgerr never writes into. It exists as of playstat 82de4db
+    # (python:3.11-slim + libgomp1 for xgboost's runtime OpenMP link + curl).
+    # NOTE: this is ONE image with TWO uses — the API service (default CMD)
+    # and the daily batch chain (`python -m modeling.clv`, `python -m
+    # optimizer.parlay ...`) run as different commands off the same image.
     build:
       context: ../../playstat
     restart: unless-stopped
@@ -64,6 +66,16 @@ services:
       - ../../playstat/.env
     environment:
       DATABASE_URL: postgresql+psycopg2://playstat:playstat@playstat-db:5432/playstat
+    # playstat's /health is auth-exempt by design (api/auth.py PUBLIC_PATHS), so
+    # no API key is needed here. It returns {"status":"ok","database":"ok"}, or
+    # 503 when Postgres is unreachable — a real DB check, not just liveness.
+    # curl is installed in their image specifically for this.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     # No `ports:` — playstat is internal-only. Budgerr's proxy reaches it at
     # http://playstat-api:8000 over the compose network. Never exposed publicly.
 
