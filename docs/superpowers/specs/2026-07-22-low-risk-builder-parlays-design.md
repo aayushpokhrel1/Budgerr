@@ -208,3 +208,37 @@ simulator available.
   decision; separate effort.
 - **Team-market settlement:** build when Playstat's team legs actually flow AND the HOLD lifts —
   BetLegInput `game_id`+`market`, grading against `team_game_stats(runs_inning_1/runs_f5)`.
+
+## 9. Implementation notes — build deltas (2026-07-23)
+
+Built via subagent-driven execution; the following refinements emerged during implementation +
+end-to-end verification and now reflect the shipped code (web `dad8cd6..af33aa5`, mobile
+`79fb0d2..449739c`, branch `feat/builder-parlays`):
+
+- **Run-date game resolution (design change, owner-approved during verification).** §5.2/§5.4
+  assumed builder-leg games resolve from the displayed slate. Verification found the builder's
+  latest saved run can be for a *different day* than the "next slate" (e.g. a 2026-07-22 run vs a
+  2026-07-23 slate), so slate-based resolution left `placed_at` = now and team matchups
+  unresolved. Fixed: resolve builder-leg games from the builder RUN's own `created_at` date via a
+  new `playstatApi.games.listForDate` + `usePlaystatGames(runDate(latestRun))`; helper `runDate`.
+- **Hide fully-past runs (owner-approved).** A run is suppressed once all its games have
+  started/finished — `isRunFullyPast` (games are "upcoming" iff status ∈ {null,'NS','S'}, mirroring
+  `GameCard`'s `statusLabel`; ≥1 resolvable game and none upcoming ⇒ hidden). This keeps stale
+  past runs (and their un-settleable bets) out of Tonight; the section shows its empty state
+  until a fresh run lands. Verified live: the stale 2026-07-22 run was correctly hidden.
+- **Player-leg display includes the line.** `legDisplay` shows `"{name} {side} {line} {stat}"`
+  for player legs (parity with the team branch's `"{matchup} — {NRFI|F5} {side} {line}"`); an
+  early build dropped the player line (caught in final review).
+- **Model UI fully removed, incl. dead code.** Beyond retiring the Tonight section, the orphaned
+  `components/tonight/ParlayCard.tsx` and the now-unused `usePlaystatParlays` /
+  `usePlaystatAllEdges` hooks were deleted in both clients. `playstatApi.parlays.list` and the
+  `PlaystatParlay*` types are retained (contract intact, per §6).
+- **Testing.** `budgerr-web` gained a minimal Vitest setup (it had no test runner) covering the
+  pure module — 16 tests. Mobile has no runner; its `lib/builderParlays.ts` is byte-identical to
+  web's and verified by `tsc`.
+- **Open observation (candidate refinement, not built):** ranking the short list by `joint_prob`
+  desc means the safer 1.4x tier dominates — in practice all shown are 1.4x, the 2.0x tier rarely
+  appears. If surfacing both tiers matters, consider e.g. top-2 per tier instead of top-4 overall.
+- **Known non-blockers:** `graphify-out` is stale in both frontend repos (`graphify update`
+  refused — a scan-corpus tooling issue, unrelated to this change); mobile README/DESIGN prose
+  still mention the deleted `ParlayCard`.
