@@ -25,6 +25,9 @@ class BetLegCreate(BaseModel):
     line_value: float | None = None
     side: str | None = None
     odds: int | None = None
+    game_id: int | None = None
+    player_id: int | None = None
+    market: str | None = None
     model_prob: float | None = None
 
 
@@ -37,6 +40,9 @@ class BetLegRead(BaseModel):
     line_value: float | None
     side: str | None
     odds: int | None
+    game_id: int | None
+    player_id: int | None
+    market: str | None
     leg_status: BetStatus
     model_prob: float | None
 

@@ -60,6 +60,12 @@ class BetLeg(Base):
     line_value: Mapped[float | None] = mapped_column(Numeric(6, 2))
     side: Mapped[str | None] = mapped_column(String)
     odds: Mapped[int | None] = mapped_column()
+    # Structured leg identity (playstat id-space; no FK). game_id on both leg
+    # kinds; player_id on player legs; market on team legs (first_inning_runs/
+    # f5_runs). Carry the CLV join keys and the team-market settlement prereq.
+    game_id: Mapped[int | None] = mapped_column()
+    player_id: Mapped[int | None] = mapped_column()
+    market: Mapped[str | None] = mapped_column(String)
     # Model-predicted win probability at log time (from playstat /edges),
     # kept for hit-rate-vs-model calibration once bets settle.
     model_prob: Mapped[float | None] = mapped_column(Float)
