@@ -17,14 +17,24 @@ so say which repo a decision belongs to before writing it down.
 | File | What it holds |
 | --- | --- |
 | `README.md` | What Budgerr is and how the three repos fit together |
+| `PRODUCT.md` | Product truth: audience, decisions, roadmap, what is deferred and why |
 | `docs/ARCHITECT.md` | The architecture across the three repos |
+| `docs/OPERATIONS.md` | Run, verify, scheduled jobs, secrets, backups, CI, environment traps |
 | `docs/DEPLOY.md` | How it is deployed |
 | `docs/superpowers/` | Per-feature specs and plans, written before building |
+| `HANDOVER.md` | Current state only. Gitignored |
 | `CLAUDE.md` | This file |
 
-There is no `HANDOVER.md` here. If one is ever added it holds **current state only**: where
-things stand, what is half-done, what is next. Before adding a line to any such file, ask: will
-this still be true in a month? If yes it belongs in one of the docs above, or in the vault.
+`HANDOVER.md` holds **current state only**: where things stand, what is half-done, what is
+next, what is blocked on someone else. It is gitignored, so nothing durable may live there.
+Before adding a line to it, ask: will this still be true in a month? If yes it belongs in one
+of the docs above, or in the vault.
+
+Two files that no longer hold what their history suggests, so do not go looking there:
+`README.md` is no longer the source of truth (it was a 381-line architecture plan that had
+absorbed roadmap, deployment and a dated state snapshot), and `docs/ARCHITECT.md` is now
+actual architecture rather than the session operating guide it used to be. Anything that
+cited "README §15" wants `PRODUCT.md` now.
 
 ## When Aayush says "update"
 

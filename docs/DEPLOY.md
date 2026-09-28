@@ -1,11 +1,19 @@
 # Budgerr + playstat Deployment Runbook
 
-**This is prep only. Nothing here has been run.** Deployment is gated on the
-owner's explicit go-ahead — do not execute any step below until they say so.
-When they do, both APIs (Budgerr and playstat) move together, onto one box,
-in one Compose stack. This document is the runbook for that day.
+**This is prep only. Nothing is deployed.** Deployment is gated on the owner's
+explicit go-ahead: do not execute any step below until they say so. When they do,
+both APIs (Budgerr and playstat) move together, onto one box, in one Compose stack.
+This document is the runbook for that day.
+
+One qualification, so the sentence above is not read as stronger than it is: the
+build-and-start path in section 6 **has** been exercised once locally, as a
+full-stack smoke test with all four services running together. Budgerr came up
+auth-gated, playstat came up with no host port, and the cross-service proxy call
+returned 200. What has never been run is anything touching real hardware, real
+secrets on a box, or data migration. No box has been chosen.
 
 Design background: `docs/superpowers/specs/2026-07-16-deployment-design.md`.
+Current state, including what deployment is still waiting on: `HANDOVER.md`.
 
 ---
 
