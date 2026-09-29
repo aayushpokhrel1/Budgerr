@@ -17,8 +17,8 @@
 #   - LOCAL (~/Budgerr-Backups): authoritative. Atomic temp->mv + retention;
 #     fully reliable under launchd.
 #   - iCloud Drive: off-machine redundancy. macOS only lets a launchd-spawned
-#     process CREATE files there — rename() and unlink() return EPERM without
-#     Full Disk Access — so the iCloud copy is create-only and best-effort: it
+#     process CREATE files there (rename() and unlink() return EPERM without
+#     Full Disk Access), so the iCloud copy is create-only and best-effort: it
 #     never fails the backup, and its retention is opportunistic. Grant the
 #     backup job Full Disk Access to make the iCloud leg fully reliable
 #     (see backend/ops/restore.md).
@@ -31,7 +31,7 @@ set -euo pipefail
 # launchd (and systemd) run with a minimal PATH; docker and age live in
 # /usr/local/bin. APPENDED, not prepended: under launchd the inherited PATH has
 # no docker/age so the fallback still finds them, and an explicitly-set PATH
-# keeps priority — which is what lets test-backup-source.sh put stubs ahead of
+# keeps priority, which is what lets test-backup-source.sh put stubs ahead of
 # the real binaries. Prepending silently overrode the caller.
 export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 
@@ -44,7 +44,7 @@ ICLOUD_DEST="${BUDGERR_ICLOUD_DEST:-$HOME/Library/Mobile Documents/com~apple~Clo
 KEEP=14
 
 if [ ! -f "$RECIPIENTS" ]; then
-  echo "$(date): backup FAILED — recipients file $RECIPIENTS missing" >&2
+  echo "$(date): backup FAILED: recipients file $RECIPIENTS missing" >&2
   exit 1
 fi
 
@@ -59,7 +59,7 @@ trap 'rm -f "$tmp"' EXIT
 if [ -n "${BUDGERR_DB_URL:-}" ]; then
   # pg_dump REJECTS SQLAlchemy's dialect suffix ("postgresql+psycopg://"), so
   # strip it. This lets the same DATABASE_URL the app uses be passed through
-  # unedited, which is the whole point — two hand-maintained copies of a
+  # unedited, which is the whole point: two hand-maintained copies of a
   # connection string drift, and this one only runs at 03:00 where nobody sees
   # it fail.
   dump_url=$(printf '%s' "$BUDGERR_DB_URL" | sed 's|^postgresql+[a-z0-9]*:|postgresql:|')
@@ -71,7 +71,7 @@ fi
 
 # Sanity check: a real encrypted custom-format dump is comfortably >1KB.
 if [ ! -s "$tmp" ] || [ "$(wc -c < "$tmp")" -lt 1000 ]; then
-  echo "$(date): backup FAILED — output too small, aborting" >&2
+  echo "$(date): backup FAILED: output too small, aborting" >&2
   exit 1
 fi
 
@@ -85,7 +85,7 @@ ls -t "$LOCAL_DEST"/budgerr-*.dump.age 2>/dev/null | tail -n +$((KEEP + 1)) | wh
   rm -f "$f" && echo "$(date): pruned local $f"
 done
 
-# Off-machine copy to iCloud (create-only; best-effort — see header note).
+# Off-machine copy to iCloud (create-only; best-effort, see header note).
 if [ -z "$ICLOUD_DEST" ]; then
   echo "$(date): iCloud off-machine copy disabled (BUDGERR_ICLOUD_DEST empty)"
 elif mkdir -p "$ICLOUD_DEST" 2>/dev/null && cp "$out" "$ICLOUD_DEST/$name" 2>/dev/null; then
@@ -95,5 +95,5 @@ elif mkdir -p "$ICLOUD_DEST" 2>/dev/null && cp "$out" "$ICLOUD_DEST/$name" 2>/de
     rm -f "$f" 2>/dev/null && echo "$(date): pruned iCloud $f"
   done
 else
-  echo "$(date): WARN off-machine iCloud copy failed — local backup is intact; grant Full Disk Access to the backup job to enable the iCloud leg" >&2
+  echo "$(date): WARN off-machine iCloud copy failed: local backup is intact; grant Full Disk Access to the backup job to enable the iCloud leg" >&2
 fi

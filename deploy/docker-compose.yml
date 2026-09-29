@@ -1,6 +1,6 @@
 name: budgerr-stack
 
-# Budgerr's Postgres is MANAGED (Supabase), not a service here — see
+# Budgerr's Postgres is MANAGED (Supabase), not a service here, see
 # docs/superpowers/specs/2026-09-29-cloud-deploy-design.md. That is deliberate:
 # with no stateful Budgerr service, the box holds nothing that cannot be rebuilt
 # from the runbook, which is what makes an Oracle Always Free instance (subject
@@ -25,7 +25,7 @@ services:
       - "127.0.0.1:8001:8001"   # loopback only: Funnel/serve + systemd cron proxy from localhost; never exposed on the LAN
 
   # ---------------------------------------------------------------------------
-  # playstat: NOT STARTED YET. Budgerr deployed to the cloud first, on its own —
+  # playstat: NOT STARTED YET. Budgerr deployed to the cloud first, on its own:
   # the July design's "both APIs move together" coupling is what stalled this
   # deploy for two months, and it turned out to cost nothing to split (spec §6).
   #

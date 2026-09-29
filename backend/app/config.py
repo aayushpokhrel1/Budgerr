@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # The ONLY coupling to Postgres: plain SQLAlchemy over a URL, with alembic
-    # owning the schema. Keep it that way — no supabase-py, no PostgREST, no RLS
+    # owning the schema. Keep it that way: no supabase-py, no PostgREST, no RLS
     # the app depends on. That is what keeps "move to a different Postgres" a
     # one-variable change instead of a rewrite.
     #

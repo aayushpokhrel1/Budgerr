@@ -40,8 +40,8 @@ note.
 Oracle Always Free VM (Ubuntu 24.04, ARM64)
   docker compose (deploy/docker-compose.yml)
     budgerr-api    :8001 on loopback  -->  Tailscale Funnel  -->  public HTTPS
-    [playstat-api  :8000 internal only  — added in a later session]
-    [playstat-db                        — added in a later session]
+    [playstat-api  :8000 internal only  (added in a later session)]
+    [playstat-db                        (added in a later session)]
   systemd timers: plaid-sync, auto-settle, auto-log, backup
 
 Supabase (managed Postgres 16)   <-- budgerr-api over the session pooler
@@ -53,7 +53,7 @@ Deltas from the July design:
 |---|---|---|
 | Pi 5 or old laptop | Oracle Always Free A1 (4 OCPU / 24 GB, ARM64) | Free, always-on, and enough CPU that the retrain caveat stops gating anything. Dockerfile is already multi-arch ARM64. |
 | `budgerr-db` compose service on a named volume | Supabase managed Postgres | Owner already runs a Supabase project. Removes a stateful service from the box, which makes the box disposable (see §5). |
-| Restore the Mac's dump on day one | **Start empty**, `alembic upgrade head` | Owner's call. Consequences in §4 — read them, they are not free. |
+| Restore the Mac's dump on day one | **Start empty**, `alembic upgrade head` | Owner's call. Consequences in §4: read them, they are not free. |
 | Both APIs move together, one cutover | Budgerr first, playstat in a later session | The coupling is what stalled this. §6 shows it costs almost nothing to split. |
 
 Everything else is unchanged: systemd timers (not a rewrite to GitHub Actions
@@ -108,7 +108,7 @@ belongs as a comment beside the `database_url` setting, not only in prose here,
 because the failure mode is non-obvious and the next person to touch it will be
 reading `config.py`.
 
-## 4. Consequences of starting empty — read before executing
+## 4. Consequences of starting empty: read before executing
 
 `alembic upgrade head` against a fresh Supabase database means the cloud
 instance has no history, and the Mac's data is not migrated. Two of these are
@@ -190,34 +190,34 @@ next person will chase it.
 
 Each step is independently verifiable, and nothing touches the Mac.
 
-1. **`deploy/docker-compose.yml`** — drop the `budgerr-db` service, its volume,
+1. **`deploy/docker-compose.yml`**: drop the `budgerr-db` service, its volume,
    its `depends_on` and the `DATABASE_URL` override so `backend/.env` owns the
    connection string. Leave the playstat services in place, untouched and
    commented as future work. Verify with `docker compose config --quiet` (never
-   bare `docker compose config` — it dumps resolved secrets to stdout).
-2. **`backend/ops/backup.sh`** — it currently dumps via
+   bare `docker compose config`: it dumps resolved secrets to stdout).
+2. **`backend/ops/backup.sh`**: it currently dumps via
    `docker exec "$CONTAINER" pg_dump`, which has no meaning without a local DB
    container. Add a URL path: when `BUDGERR_DB_URL` is set, `pg_dump -Fc "$url"`
    directly. Default behaviour on the Mac stays byte-identical. Note at the code
    that `DATABASE_URL`'s SQLAlchemy `+psycopg` dialect suffix must be stripped
    before `pg_dump` will accept the string; that is exactly the kind of thing
    that fails at 03:00 and nowhere else.
-3. **`config.py`** — comment the session-pooler requirement beside
+3. **`config.py`**: comment the session-pooler requirement beside
    `database_url` (§3).
-4. **`docs/DEPLOY.md`** — rewrite to this design. Lift the "prep only" gate,
+4. **`docs/DEPLOY.md`**: rewrite to this design. Lift the "prep only" gate,
    strike §2's hardware table and retrain caveat, replace §3 with Oracle OS prep
    (Ubuntu 24.04 ARM64, the `ubuntu` user, and the point that OCI images ship
-   restrictive `iptables` rules plus VCN security lists — which Funnel sidesteps
+   restrictive `iptables` rules plus VCN security lists, which Funnel sidesteps
    entirely, since it is outbound-initiated and needs no inbound port), rewrite
    §5 and §7 for Supabase and the empty start, add §4's re-link step, mark
    smoke test 4 as expecting 502, and add the Supabase traps and the Oracle
    reclaim policy to §14.
-5. **`docs/OPERATIONS.md`** — §1 currently states "the project runs on a Mac"
+5. **`docs/OPERATIONS.md`**: §1 currently states "the project runs on a Mac"
    and that a non-Mac checkout can verify nothing. That becomes false the day
    this ships. Correct it in place rather than appending.
-6. **`docs/ARCHITECT.md`** — record the §3 portability constraint at the data
+6. **`docs/ARCHITECT.md`**: record the §3 portability constraint at the data
    layer.
-7. **`PRODUCT.md`** — the deploy roadmap entry says gated on the owner and
+7. **`PRODUCT.md`**: the deploy roadmap entry says gated on the owner and
    hardware. Both are resolved; make it true.
 8. **Execute the runbook** on the Oracle instance, then repoint `budgerr-web`
    (Vercel env var) and `budgerr-app` (`EXPO_PUBLIC_API_URL`), and add the

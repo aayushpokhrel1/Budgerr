@@ -2,21 +2,21 @@
 
 Executes item 4 of
 [`../specs/2026-09-29-cloud-deploy-design.md`](../specs/2026-09-29-cloud-deploy-design.md) §7.
-**Read that spec first — it is authoritative.** Where this plan and the spec
+**Read that spec first: it is authoritative.** Where this plan and the spec
 disagree, the spec wins.
 
 Also read, because they are already changed and the doc must describe them
 accurately rather than what it remembers:
 
-- `deploy/docker-compose.yml` — `budgerr-db` and its volume are GONE; `DATABASE_URL`
+- `deploy/docker-compose.yml`: `budgerr-db` and its volume are GONE; `DATABASE_URL`
   is no longer overridden; playstat services remain but are not started.
-- `backend/app/config.py` — the `database_url` comment on Supabase pooler choice.
-- `backend/ops/backup.sh` — new `BUDGERR_DB_URL` dump source; `BUDGERR_DB_CONTAINER`
+- `backend/app/config.py`: the `database_url` comment on Supabase pooler choice.
+- `backend/ops/backup.sh`: new `BUDGERR_DB_URL` dump source; `BUDGERR_DB_CONTAINER`
   is only used when that is unset.
 
 Edit **only** `docs/DEPLOY.md`. Do not touch any other file. Preserve the file's
 existing voice, heading numbering, and its habit of explaining *why* a step
-exists. Keep every section that is still true — this is a surgical revision of a
+exists. Keep every section that is still true: this is a surgical revision of a
 496-line runbook, not a rewrite from scratch. **Do not use em dashes or en
 dashes anywhere; use a comma, colon, parentheses, or two sentences.**
 
@@ -31,7 +31,7 @@ design rationale, keeping the existing pointer to the July design as superseded
 on hardware only.
 
 **§1 Scope & gate.** Rewrite. Drop "both APIs move together, onto one box, in one
-Compose stack" and "no hardware has been bought" — both are obsolete. Keep the
+Compose stack" and "no hardware has been bought", both are obsolete. Keep the
 playstat review gate, but scope it to when playstat actually moves. State that
 Budgerr goes first and alone, and why that is safe (spec §6).
 
@@ -52,7 +52,7 @@ Keep the existing commands (apt upgrade, Docker via get.docker.com, `usermod -aG
 docker`, Tailscale install, `timedatectl set-timezone`, `systemctl enable --now
 docker`). The default user on Oracle's Ubuntu image is `ubuntu`. Add two things:
 
-1. `sudo apt install -y postgresql-client-16` — `backup.sh` now runs `pg_dump`
+1. `sudo apt install -y postgresql-client-16`: `backup.sh` now runs `pg_dump`
    on the box instead of inside a container, so the client must exist, and its
    major version must be at least the server's (Supabase is 16).
 2. A warning that OCI Ubuntu images ship restrictive `iptables` rules (persisted
@@ -102,7 +102,7 @@ cloud instance.
 **§8 systemd.** The unit files and `systemctl enable` commands are unchanged.
 `/etc/budgerr/cron.env` changes:
 
-- **Remove** `BUDGERR_DB_CONTAINER` — there is no local Postgres container.
+- **Remove** `BUDGERR_DB_CONTAINER`: there is no local Postgres container.
 - **Add** `BUDGERR_DB_URL` set to the same Supabase session-pooler URL as
   `DATABASE_URL`. Explain that `backup.sh` switches to a direct `pg_dump` when
   this is set, and that it strips the SQLAlchemy `+psycopg` suffix itself, so the
