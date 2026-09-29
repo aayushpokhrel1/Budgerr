@@ -145,6 +145,31 @@ Two consequences worth knowing before touching leg code:
   pre-migration rows (`market` null) render exactly as before. That fallback is why
   no backfill was needed.
 
+### 2.4 Postgres portability is a constraint, not a description
+
+The cloud deploy puts Postgres on Supabase, a managed provider. The durable half of
+that decision is that Budgerr stays portable, and this is the rule to read **before**
+adding a dependency at this layer.
+
+- Budgerr's only coupling to Postgres is a `DATABASE_URL` consumed by plain
+  SQLAlchemy with psycopg3, with alembic owning the schema. See
+  `backend/app/config.py`.
+- There is deliberately no `supabase-py`, no PostgREST, no Supabase Auth, no
+  Supabase storage or realtime, and no RLS policy the application depends on.
+  Budgerr's own auth is its `X-API-Key` check in `backend/app/auth.py`, which is
+  unrelated to the database provider.
+- Therefore moving to a different Postgres, self-hosted or another provider, is
+  changing one environment variable and restoring a `pg_dump`.
+
+**This is a constraint to preserve, not just a description.** Adopting any
+Supabase-specific feature would convert that one-variable move into a rewrite. Treat
+it as a rule, not an observation.
+
+The nightly `age`-encrypted `pg_dump` (`backend/ops/backup.sh`) is the mechanical
+enforcement: as long as a plain dump runs and restores, lock-in cannot accumulate
+quietly. It is not redundant with Supabase's own backups, whose free tier has short
+retention and no point-in-time recovery.
+
 ## 3. Categorization and betting detection
 
 - Plaid provides category enrichment; a merchant-name rule set layers on top

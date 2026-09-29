@@ -5,6 +5,12 @@ How to run it, verify it, and keep it alive. Deploying to a new box is
 
 ## 1. Which machine
 
+A cloud deploy is designed and its runbook is ready (`docs/DEPLOY.md`). The target is
+an Oracle Always Free instance with managed Supabase Postgres, and **it has not been
+executed**, so everything in this section still describes reality. When it does ship,
+the Mac stops being the only machine that can run Budgerr, and a checkout anywhere
+becomes able to verify against the deployed API.
+
 **The project runs on a Mac.** The scheduled jobs are launchd LaunchAgents, the
 backup script shells out to macOS paths, and `docs/DEPLOY.md` targets a Linux box
 for the eventual move. A checkout on another machine (Windows, for instance) is

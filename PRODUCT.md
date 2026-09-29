@@ -130,11 +130,20 @@ Roughly in value-per-effort order. Nothing here is started.
 ### Get off the laptop
 
 - **Deploy.** Design approved and every artifact authored, committed, and smoke-tested
-  together: Dockerfile, combined compose with two separate Postgres, systemd timer
-  pairs, and the runbook in `docs/DEPLOY.md`. **Gated on the owner**, who picks the
-  box (Raspberry Pi 5 8GB, or an old laptop on Ubuntu) after seeing the Pi's real
-  retrain time. Multi-arch images run on either. Nothing is deployed, no hardware,
-  no data migrated.
+  together: Dockerfile, compose, systemd timer pairs, and the runbook in
+  `docs/DEPLOY.md`. The owner gave the go-ahead on 2026-09-29, so this is no longer
+  owner-gated. The hardware question is dissolved rather than answered: the target is
+  an Oracle Cloud Always Free ARM instance (4 OCPU, 24 GB), which has more CPU and
+  roughly 3x the RAM of the Pi that prompted the retrain caveat, so the
+  Pi-versus-laptop choice and the retrain measurement are no longer prerequisites for
+  anything. Postgres is managed (Supabase) rather than a compose service, chosen partly
+  so the box stays stateless and disposable. Budgerr deploys alone; playstat follows in
+  a later session onto the same box, using compose services that are already authored.
+  The old "both APIs move together" coupling is dropped, and that coupling is what
+  stalled this for two months. The database starts **empty**, which is a product
+  decision with visible user cost: every bank account must be re-linked, and
+  transaction history, bet history and bankroll all start from zero on the cloud
+  instance. Still pending: executing the runbook. Nothing is deployed.
 - **Plaid webhooks.** Replace daily polling with `SYNC_UPDATES_AVAILABLE` once a
   public HTTPS URL exists, keeping the daily sync as a fallback sweep. Post-deploy
   by definition.
