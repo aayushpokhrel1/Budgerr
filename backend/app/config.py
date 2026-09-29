@@ -4,6 +4,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # The ONLY coupling to Postgres: plain SQLAlchemy over a URL, with alembic
+    # owning the schema. Keep it that way — no supabase-py, no PostgREST, no RLS
+    # the app depends on. That is what keeps "move to a different Postgres" a
+    # one-variable change instead of a rewrite.
+    #
+    # On Supabase, use the SESSION pooler (port 5432 on ...pooler.supabase.com).
+    # Not the direct connection: IPv6-only on recent projects, so an IPv4-only
+    # host times out in a way that reads like a firewall problem.
+    # Not the transaction pooler (6543): it breaks psycopg3's prepared
+    # statements, which surfaces as intermittent 'prepared statement "_pg_..."
+    # already exists' under reuse rather than a clean failure at startup.
     database_url: str = "postgresql+psycopg://budgerr:budgerr@localhost:5433/budgerr"
 
     plaid_client_id: str = ""

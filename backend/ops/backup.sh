@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # Nightly encrypted Postgres backup for Budgerr.
 #
-# Dumps the Docker Postgres (custom format, -Fc) and encrypts it with `age`
-# using the public recipient in ~/.config/budgerr/backup-age.pub.
+# Dumps Postgres (custom format, -Fc) and encrypts it with `age` using the
+# public recipient in ~/.config/budgerr/backup-age.pub.
+#
+# Two dump sources, chosen by whether BUDGERR_DB_URL is set:
+#   - UNSET (the Mac): `docker exec` into the local Postgres container.
+#   - SET (the cloud box): `pg_dump` straight at the URL, because Budgerr's
+#     Postgres is managed (Supabase) and there is no local container to exec into.
+# This dump is also what keeps the managed Postgres replaceable: as long as a
+# plain pg_dump runs nightly and restores, no vendor lock-in accumulates quietly.
+# Supabase's free tier has short backup retention and no PITR, so this is not
+# redundant with theirs.
 #
 # Two destinations:
 #   - LOCAL (~/Budgerr-Backups): authoritative. Atomic temp->mv + retention;
@@ -19,8 +28,12 @@
 # Restore + decrypt procedure: backend/ops/restore.md.
 set -euo pipefail
 
-# launchd runs with a minimal PATH; docker and age live in /usr/local/bin.
-export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+# launchd (and systemd) run with a minimal PATH; docker and age live in
+# /usr/local/bin. APPENDED, not prepended: under launchd the inherited PATH has
+# no docker/age so the fallback still finds them, and an explicitly-set PATH
+# keeps priority — which is what lets test-backup-source.sh put stubs ahead of
+# the real binaries. Prepending silently overrode the caller.
+export PATH="$PATH:/usr/local/bin:/usr/bin:/bin"
 
 CONTAINER="${BUDGERR_DB_CONTAINER:-budgerr-postgres-1}"
 DB_USER="budgerr"
@@ -41,10 +54,20 @@ out="$LOCAL_DEST/$name"
 tmp="$out.tmp"
 trap 'rm -f "$tmp"' EXIT
 
-# Dump straight from the container and encrypt in one pipe (pipefail catches a
-# failing pg_dump before we ever promote the temp file).
-docker exec "$CONTAINER" pg_dump -U "$DB_USER" -Fc "$DB_NAME" \
-  | age -R "$RECIPIENTS" -o "$tmp"
+# Dump and encrypt in one pipe (pipefail catches a failing pg_dump before we
+# ever promote the temp file).
+if [ -n "${BUDGERR_DB_URL:-}" ]; then
+  # pg_dump REJECTS SQLAlchemy's dialect suffix ("postgresql+psycopg://"), so
+  # strip it. This lets the same DATABASE_URL the app uses be passed through
+  # unedited, which is the whole point — two hand-maintained copies of a
+  # connection string drift, and this one only runs at 03:00 where nobody sees
+  # it fail.
+  dump_url=$(printf '%s' "$BUDGERR_DB_URL" | sed 's|^postgresql+[a-z0-9]*:|postgresql:|')
+  pg_dump -Fc "$dump_url" | age -R "$RECIPIENTS" -o "$tmp"
+else
+  docker exec "$CONTAINER" pg_dump -U "$DB_USER" -Fc "$DB_NAME" \
+    | age -R "$RECIPIENTS" -o "$tmp"
+fi
 
 # Sanity check: a real encrypted custom-format dump is comfortably >1KB.
 if [ ! -s "$tmp" ] || [ "$(wc -c < "$tmp")" -lt 1000 ]; then
