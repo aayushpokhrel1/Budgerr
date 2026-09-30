@@ -158,7 +158,7 @@ annotations):
 |---|---|
 | `AUTH_ENABLED` | Set `true` on the box. |
 | `BUDGERR_API_KEYS` | `web:<key>,mobile:<key>,cron:<key>`, three long random keys, one per consumer. Generate each with e.g. `openssl rand -hex 32`. The `cron` key is what systemd timers use (§8) and also goes in `/etc/budgerr/cron.env`. |
-| `DATABASE_URL` | **Required, and owned by this file**: compose no longer overrides it. Must be Supabase's **session pooler**: port 5432 on the `...pooler.supabase.com` host. See the two traps below. |
+| `DATABASE_URL` | **Required, and owned by this file**: compose no longer overrides it. Must be Supabase's **session pooler**: port 5432 on the `...pooler.supabase.com` host. Rewrite the scheme Supabase gives you from `postgresql://` to `postgresql+psycopg://`, or the app fails at startup with `No module named psycopg2`: SQLAlchemy's bare `postgresql://` dialect means psycopg2, and this backend installs psycopg3 (`psycopg[binary]`). See the two traps below. |
 | `PLAYSTAT_BASE_URL` | Ignored: compose overrides this to `http://playstat-api:8000`. |
 | `PLAYSTAT_API_KEY` | Must match a `budgerr:<key>` entry in playstat's `PLAYSTAT_API_KEYS`. Coordinate the actual value with the playstat side. |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` / `PLAID_ENV` | Same values as the Mac's current config. |
