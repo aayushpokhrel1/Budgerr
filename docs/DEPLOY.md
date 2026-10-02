@@ -61,6 +61,31 @@ that cannot be rebuilt from this runbook. A reclaim means rebuilding, not losing
 data. Keep the secrets recoverable off-box (a password manager) and a reclaim
 becomes an inconvenience measured in minutes.
 
+**Getting an A1 instance is a capacity lottery, so protect the one you win.**
+`Out of host capacity` on `VM.Standard.A1.Flex` is routine, and larger requests
+fail more often than small ones. Cycling the availability domain is the useful
+retry lever (capacity is per-AD), and OCI rate-limits repeated launch attempts,
+so pace them 10 to 15 minutes apart rather than hammering Create. Always Free
+compute exists only in the tenancy's home region, so switching region is not a
+lever.
+
+Once you have one, three things put you back in that queue. The first is the one
+people lose instances to:
+
+1. **Never STOP the instance.** A reboot keeps your place on the host. A stop
+   releases the VM, and starting it again needs capacity in that AD, which can
+   fail for days. Reboot when you need to; do not stop.
+2. **Resizing the shape re-rolls it too.** Changing OCPU or memory needs capacity
+   at the new size and goes through a stop/start, so "take a small shape now and
+   resize later" is a real option but not a guarantee. Take the shape you want
+   when it is offered.
+3. **Idle reclamation**, above. Upgrading the account to Pay As You Go exempts it
+   from reclamation while leaving Always Free resources free, at the cost of a
+   card on file; set a low budget alert if you do that.
+
+None of this is data risk, only time risk, and that is the point of keeping the
+box stateless.
+
 ## 3. OS prep
 
 Install Ubuntu 24.04 LTS ARM64 on the Oracle instance. The default user on
