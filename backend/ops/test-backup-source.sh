@@ -29,6 +29,10 @@ cat > "$work/bin/age" <<'EOF'
 out=""; while [ $# -gt 0 ]; do [ "$1" = "-o" ] && out="$2"; shift; done
 cat > "$out"
 EOF
+cat > "$work/bin/rclone" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$STUB_LOG/rclone.args"
+EOF
 chmod +x "$work/bin"/*
 
 export STUB_LOG="$work"
@@ -65,4 +69,29 @@ run_backup
 grep -q 'pg_dump' "$work/docker.args" || fail "docker exec did not run pg_dump"
 ls "$work/out"/budgerr-*.dump.age >/dev/null 2>&1 || fail "container mode wrote no backup"
 
-echo "PASS: both dump sources behave correctly"
+# 3. BUDGERR_REMOTE_DEST unset -> rclone never runs. This is the Mac's state, and
+#    the whole point of the switch is that the Mac's run is unchanged.
+[ -f "$work/rclone.args" ] && fail "remote leg ran with BUDGERR_REMOTE_DEST unset"
+
+# 4. BUDGERR_REMOTE_DEST set -> the dump is copied to the remote, and retention
+#    runs against that same remote.
+rm -rf "$work/out"
+BUDGERR_REMOTE_DEST="oci:budgerr-backups" run_backup
+[ -f "$work/rclone.args" ] || fail "remote leg did not call rclone"
+name=$(basename "$(ls "$work/out"/budgerr-*.dump.age)")
+grep -q "copyto .*$name oci:budgerr-backups/$name" "$work/rclone.args"   || fail "rclone did not copy the dump to the remote: $(cat "$work/rclone.args")"
+grep -q "delete .*oci:budgerr-backups" "$work/rclone.args"   || fail "rclone did not prune the remote: $(cat "$work/rclone.args")"
+
+# 5. A failing remote must not fail the backup: the local dump is authoritative.
+rm -rf "$work/out"
+cat > "$work/bin/rclone" <<'EOF'
+#!/usr/bin/env bash
+echo "simulated remote failure" >&2
+exit 1
+EOF
+chmod +x "$work/bin/rclone"
+BUDGERR_REMOTE_DEST="oci:budgerr-backups" run_backup   || fail "a failing remote leg aborted the backup"
+ls "$work/out"/budgerr-*.dump.age >/dev/null 2>&1   || fail "local backup missing after remote leg failed"
+grep -q "WARN off-machine remote copy" "$work/stdout"   || fail "failing remote leg did not warn"
+
+echo "PASS: both dump sources and the off-machine remote leg behave correctly"

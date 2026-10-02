@@ -163,7 +163,12 @@ with `age`.
 - Private identity: `~/.config/budgerr/backup-age.key`, mode 600, kept **off** the
   backup location. **Losing it makes every backup unrecoverable.**
 - Authoritative copy to a local backups directory, atomic write with newest-14
-  retention. Best-effort second copy to iCloud Drive.
+  retention. Best-effort second copy off the machine: iCloud Drive on the Mac
+  (`BUDGERR_ICLOUD_DEST`), or any rclone remote (`BUDGERR_REMOTE_DEST`, set to
+  OCI Object Storage on the Linux box, pruned by age at 14 days). Both legs are
+  best-effort and never fail the run; whichever is unset is skipped. The Linux
+  box needs one because iCloud is macOS-only and a reclaimed instance would
+  otherwise take the only copy of the dumps with it.
 
 **macOS trap:** a launchd process can *create* files in iCloud but cannot `rename`
 or `unlink` them without Full Disk Access. That is the entire reason for the

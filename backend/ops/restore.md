@@ -8,7 +8,11 @@ not in git — see README §15.2 / the launchd memory).
 - **Where**:
   - `~/Budgerr-Backups/` — **authoritative** local copy (atomic write + retention, reliable under launchd).
   - `~/Library/Mobile Documents/com~apple~CloudDocs/Budgerr-Backups/` — off-machine iCloud copy (encrypted at rest).
-  - Retention: newest 14 in each. macOS only lets the launchd job *create* files in iCloud (rename/unlink → EPERM without Full Disk Access), so the iCloud leg is create-only + best-effort and its pruning is opportunistic; the local copy is the source of truth. Grant the backup job Full Disk Access if you want the iCloud leg fully managed.
+  - On the Linux box, iCloud is replaced by an rclone remote (`BUDGERR_REMOTE_DEST`,
+    OCI Object Storage), so look there with `rclone lsf $BUDGERR_REMOTE_DEST` if the
+    instance itself is gone. The local directory there is `/var/backups/budgerr/`.
+    See `docs/DEPLOY.md` section 8.
+  - Retention: newest 14 in each (the rclone remote prunes by age at 14 days instead). macOS only lets the launchd job *create* files in iCloud (rename/unlink → EPERM without Full Disk Access), so the iCloud leg is create-only + best-effort and its pruning is opportunistic; the local copy is the source of truth. Grant the backup job Full Disk Access if you want the iCloud leg fully managed.
 - **Key**: encrypted to the public recipient in `~/.config/budgerr/backup-age.pub`.
   The private identity `~/.config/budgerr/backup-age.key` (mode 600) is the ONLY
   thing that can decrypt them and is intentionally kept off the backup location.

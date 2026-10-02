@@ -274,13 +274,14 @@ BUDGERR_CRON_KEY=<the cron key from BUDGERR_API_KEYS>
 BUDGERR_HOME=/home/ubuntu/dev/Budgerr
 BUDGERR_DB_URL=<the same Supabase session-pooler URL as DATABASE_URL>
 BUDGERR_ICLOUD_DEST=""
+BUDGERR_REMOTE_DEST=oci:budgerr-backups
 BUDGERR_AGE_RECIPIENTS=/etc/budgerr/backup-age.pub
 BUDGERR_BACKUP_DIR=/var/backups/budgerr
 EOF
 sudo chmod 600 /etc/budgerr/cron.env
 ```
 
-Three notes on those variables:
+Four notes on those variables:
 
 - **`BUDGERR_DB_CONTAINER` is gone.** There is no local Postgres container to
   exec into, so the variable has no meaning here.
@@ -291,10 +292,39 @@ Three notes on those variables:
 - **`BUDGERR_ICLOUD_DEST=""`** disables the off-machine leg explicitly. The
   script's default is a macOS iCloud path, which on Linux is merely a junk
   directory the script would create. Empty is the honest setting.
+- **`BUDGERR_REMOTE_DEST`** is what replaces it. With iCloud off, the encrypted
+  dumps would live only on this instance's boot volume, and §2 accepts that
+  Oracle may reclaim an idle Always Free instance. The box being stateless does
+  not cover the dumps: once the cloud database diverges from the Mac they are
+  the only deep history, and Supabase's free tier has short retention and no
+  PITR, so they are not redundant with the provider's backups. When this
+  variable is set, `backup.sh` copies each dump to that rclone remote and prunes
+  copies older than 14 days there. Leave it unset on the Mac, where iCloud
+  already provides the off-machine leg.
+
+  Set up the remote once (Always Free includes 10 GB of Object Storage in the
+  same tenancy, and the dumps are age-encrypted, so the bucket itself is not a
+  secret):
+
+  ```bash
+  sudo apt install -y rclone
+  # Create a bucket in the OCI console, then a Customer Secret Key under your
+  # user's API keys, and configure rclone's S3-compatible backend against
+  # https://<namespace>.compat.objectstorage.<region>.oraclecloud.com
+  sudo -H rclone config          # remote named "oci", type s3, provider Other
+  sudo -H rclone lsd oci:        # must list the bucket before the timer needs it
+  ```
+
+  `budgerr-backup.service` runs as root, so the rclone config must be root's
+  (`/root/.config/rclone/rclone.conf`); that is what `sudo -H` above gives you.
+  The leg is best-effort like the iCloud one: a failed upload logs a `WARN` and
+  leaves the local backup intact rather than failing the run, so check the
+  journal occasionally rather than assuming silence means success.
 
 **Do not hand-edit `backend/ops/backup.sh` on the box.** The script already
 reads `BUDGERR_DB_URL`, `BUDGERR_DB_CONTAINER`, `BUDGERR_AGE_RECIPIENTS`,
-`BUDGERR_BACKUP_DIR` and `BUDGERR_ICLOUD_DEST` as environment overrides
+`BUDGERR_BACKUP_DIR`, `BUDGERR_ICLOUD_DEST` and `BUDGERR_REMOTE_DEST` as
+environment overrides
 (defaulting to the macOS/launchd values so the Mac's authoritative 03:00 backup
 keeps running unchanged until cutover is verified). `budgerr-backup.service`
 already loads `/etc/budgerr/cron.env` via `EnvironmentFile=`, so setting the

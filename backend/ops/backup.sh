@@ -97,3 +97,25 @@ elif mkdir -p "$ICLOUD_DEST" 2>/dev/null && cp "$out" "$ICLOUD_DEST/$name" 2>/de
 else
   echo "$(date): WARN off-machine iCloud copy failed: local backup is intact; grant Full Disk Access to the backup job to enable the iCloud leg" >&2
 fi
+
+# Off-machine copy to any rclone remote (best-effort, same contract as the
+# iCloud leg above: it never fails the backup). UNSET is the Mac's state and
+# skips this block entirely, so nothing about the Mac's run changes.
+#
+# This exists because the cloud box sets BUDGERR_ICLOUD_DEST="" (iCloud is
+# macOS-only), which would otherwise leave the dumps on one reclaimable boot
+# volume with no second copy. Oracle can reclaim an idle Always Free instance;
+# the box is stateless, but these dumps are not, so they need to leave it.
+# Set e.g. BUDGERR_REMOTE_DEST="oci:budgerr-backups" (see docs/DEPLOY.md §8).
+if [ -n "${BUDGERR_REMOTE_DEST:-}" ]; then
+  if rclone copyto "$out" "$BUDGERR_REMOTE_DEST/$name" 2>&1; then
+    echo "$(date): off-machine copy OK -> $BUDGERR_REMOTE_DEST/$name"
+    # Age-based, not count-based like the local leg: one dump a night makes
+    # "older than $KEEP days" and "all but the newest $KEEP" the same set, and
+    # age is one rclone call instead of listing and sorting a remote.
+    rclone delete --min-age "${KEEP}d" --include 'budgerr-*.dump.age' \
+      "$BUDGERR_REMOTE_DEST" 2>&1 || true
+  else
+    echo "$(date): WARN off-machine remote copy to $BUDGERR_REMOTE_DEST failed: local backup is intact" >&2
+  fi
+fi
